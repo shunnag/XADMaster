@@ -114,6 +114,11 @@ static uint32_t ReadFilterInteger(CSInputBuffer *input);
 		XADRAR50Filter *filter=[filters objectAtIndex:0];
 		off_t start=nextfilterstart;
 		uint32_t length=[filter length];
+		// [cooViewer] bound the attacker-controlled filter length to the LZSS window before it
+		// becomes an int copy count (CopyBytesFromLZSSWindow takes int) and an allocation size;
+		// a value >= 2^31 would truncate to negative / attempt a huge alloc. Mirrors the RAR3
+		// produceBlockAtOffset: clamp. See MODERNIZATION.md.
+		if(length>LZSSWindowSize(&lzss)) [XADException raiseIllegalDataException];
 		off_t end=start+length;
 
 		off_t actualend=[self expandToPosition:end];
