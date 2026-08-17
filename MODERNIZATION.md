@@ -77,6 +77,19 @@ unaffected (cooViewer's XCTest suite confirms no regression).
 | 9 | `XADArchiveParser.m` | modernization | Replace deprecated `+propertyListFromData:mutabilityOption:format:errorDescription:` (10.10) with `+propertyListWithData:options:format:error:` (since 10.6); behavior-equivalent. | upstreamable |
 | 10 | `LZSS.h` | performance / apple-silicon | Add a fast path to `EmitLZSSMatch` (the RAR window-copy hot loop shared by all RAR decoders): when neither the source nor destination range wraps the window, use `memcpy` (non-overlapping match) / `memset` (`offset==1` run) / a forward byte loop (overlapping match) instead of the per-byte masked copy; falls back to the original masked loop on wrap. `memcpy`/`memset` are NEON-accelerated on Apple Silicon. Validated **byte-identical** against the original by differential fuzzing (1.5M cases across window sizes 64 B–1 MB) and ~1.4× faster on a RAR-like match workload. | upstreamable |
 | 11 | `CRC.m` | performance / apple-silicon | Add a guarded (`#if defined(__ARM_FEATURE_CRC32)`) single-stream ARMv8 hardware CRC32 path for the reflected `edb88320` poly used by zip/gzip/rar CRC verification, gated to the one `XADCRCTable_sliced16_edb88320` table and falling back to the existing sliced-by-16 code on non-arm builds / any other table. Byte-identical to the table (validated by `CRCCalculationTests` + offline differential fuzzing, 20k cases) and ~2.3× faster (10.6 vs 4.6 GB/s) on Apple Silicon. | upstreamable |
+| 12 | `Scanning.m` | security / correctness | Use `memmove` instead of `memcpy` for the archive-scan carry-over window shift; source and destination overlap when `actual < 2*maximumlength-2`, so the `memcpy` was undefined behavior. Found by AddressSanitizer fuzzing of the open+extract path. | upstreamable |
+| 13 | `XADRAR5Parser.m` | hardening | Bound two attacker-controlled shifts flagged by UBSan fuzzing: the RAR5 varint reader (`res \|= bits << pos`) no longer shifts a `uint64` by `>=64` (accumulates only the low 64 bits, keeps the stream in sync); and the RAR5 KDF count exponent is rejected outside `[0,24]` (`1<<strength` was UB for `strength>=31` and a `2^strength`-iteration DoS). | upstreamable |
+| 14 | `XADZipCryptHandle.m` | hardening | Compute the PKZIP decrypt key-stream product in unsigned arithmetic; `temp*(temp^1)` promoted to `int` and overflowed (signed-overflow UB, found by UBSan fuzzing). | upstreamable |
+
+## Fuzzing
+
+Changes 12–14 came from an AddressSanitizer + UndefinedBehaviorSanitizer campaign: the framework is
+built with `-fsanitize=address,undefined` and a small harness drives `XADArchive initWithData:`
+(format detect → parse → per-entry decompress) on mutated seed archives (zip/gzip/bzip2/StuffIt/
+WARC + crafted RAR/7z magic). No memory-corruption (ASan) defects remain after change 12; the
+UBSan findings above are bounded. UBSan also flags benign enum-range loads inside the vendored
+`UniversalDetector` (Mozilla `universalchardet`) — those are tracked in that library's own fork,
+not here.
 
 ## Deferred (candidates for a future iteration)
 
