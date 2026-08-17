@@ -415,14 +415,20 @@ length:(uint32_t)length
 
 			off_t nextoffset=[fh offsetInFile];
 			int nextlength=systemlength;
+			int celimit=64; // [cooViewer] cap SUSP "CE" continuation chains: a cyclic/self-
+			                // referential chain otherwise loops forever (DoS). Found by audit.
 
 			while(nextlength)
 			{
+				if(celimit-- <= 0) break;
 				off_t curroffset=nextoffset;
 				int currlength=nextlength;
 				nextlength=0;
 				nextoffset=0;
 
+				// [cooViewer] currlength becomes a CE length field (attacker uint32) on later
+				// iterations; a huge/negative value overflows the stack VLA below. Bound it.
+				if(currlength<0 || currlength>65536) [XADException raiseIllegalDataException];
 				uint8_t system[currlength];
 				[fh seekToFileOffset:curroffset];
 				[fh readBytes:currlength toBuffer:system];
@@ -498,7 +504,10 @@ length:(uint32_t)length
 							{
 								int flags=system[pos+offs];
 								int complen=system[pos+offs+1];
-								if(offs+complen>length) break;
+								// [cooViewer] the component bytes start at offs+2, so the read of
+								// complen bytes needs offs+2+complen<=length; the old offs+complen
+								// guard let it read up to 2 bytes past system[]. Found by audit.
+								if(offs+2+complen>length) break;
 
 								if(flags&0x08)
 								{

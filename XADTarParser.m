@@ -292,6 +292,12 @@
 
 		// Grab the pair from the header.
 		int next_pair_size = (int)[XADTarParser readNumberInRangeFromBuffer:NSMakeRange(start_pos,read_length) buffer:header] - read_length;
+		// [cooViewer] next_pair_size is attacker-controlled (a PAX record length minus the digits
+		// already read); a negative value makes the VLA and memset below wrap to a huge size
+		// (stack smash) and a large value overflows the stack. Require it to fit the remaining
+		// header bytes before the VLA is formed. Found by a memory-safety audit.
+		if(next_pair_size < 1 || (NSInteger)next_pair_size > (NSInteger)[header length] - position)
+			[XADException raiseIllegalDataException];
 		int next_pair_offset = position + next_pair_size;
 		char key_val_pair[next_pair_size];
 		memset( key_val_pair, '\0', next_pair_size );

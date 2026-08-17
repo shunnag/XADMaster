@@ -85,6 +85,10 @@ static uint64_t ParseOctal(const uint8_t *ptr,int maxlen)
 		{
 			// BSD long filename.
 			int namelen=(int)ParseDecimal(&header[3],12);
+			// [cooViewer] namelen comes from a 12-byte decimal field with no bound; a large value
+			// overflows the stack VLA and a negative one is undefined. A BSD long name is a path,
+			// so cap it well above PATH_MAX. Found by a memory-safety audit.
+			if(namelen<0 || namelen>65536) [XADException raiseIllegalDataException];
 			uint8_t namebuf[namelen];
 			[fh readBytes:namelen toBuffer:namebuf];
 			size-=namelen;
