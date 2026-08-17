@@ -396,9 +396,14 @@ value:(uint32_t *)valueptr byteMode:(BOOL)bytemode isRelativeJump:(BOOL)isrel cu
 	if(newgloballength>RARProgramUserGlobalSize) newgloballength=RARProgramUserGlobalSize;
 	if(newgloballength>0)
 	{
+		// [cooViewer] pass the NSMutableData object itself — the previous code passed its raw
+		// -mutableBytes pointer, which was then sent -mutableBytes as if it were an object
+		// (type confusion). Size the buffer to the requested length first so the readback
+		// (a memcpy into the data) cannot overflow. See MODERNIZATION.md.
+		[globaldata setLength:RARProgramSystemGlobalSize+newgloballength];
 		[vm readMemoryAtAddress:RARProgramSystemGlobalAddress
 		length:RARProgramSystemGlobalSize+newgloballength
-		toMutableData:[globaldata mutableBytes]];
+		toMutableData:globaldata];
 	}
 	else [globaldata setLength:0];
 
