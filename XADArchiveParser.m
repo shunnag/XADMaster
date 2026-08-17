@@ -1055,8 +1055,11 @@ regex:(XADRegex *)regex firstFileExtension:(NSString *)firstext
 	XADString *actualcomment=[dict objectForKey:XADCommentKey];
 	if(extcomment && !actualcomment)
 	{
-		id plist=[NSPropertyListSerialization propertyListFromData:extcomment
-		mutabilityOption:0 format:NULL errorDescription:NULL];
+		// [cooViewer] +propertyListFromData:mutabilityOption:format:errorDescription: is
+		// deprecated (10.10); the supported +propertyListWithData:options:format:error:
+		// (since 10.6) is behavior-equivalent (options:0 == NSPropertyListImmutable).
+		id plist=[NSPropertyListSerialization propertyListWithData:extcomment
+		options:0 format:NULL error:NULL];
 
 		if(plist&&[plist isKindOfClass:[NSString class]])
 		[dict setObject:[self XADStringWithString:plist] forKey:XADCommentKey];

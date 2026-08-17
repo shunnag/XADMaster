@@ -37,7 +37,10 @@
 
 +(CSMemoryHandle *)memoryHandleForReadingMappedFile:(NSString *)filename
 {
-	return [[[CSMemoryHandle alloc] initWithData:[NSData dataWithContentsOfMappedFile:filename]] autorelease];
+	// [cooViewer] +dataWithContentsOfMappedFile: is deprecated (10.10) and unconditionally mmaps;
+	// the modern options: form (available since 10.6) is behavior-equivalent and safer —
+	// NSDataReadingMappedIfSafe declines to mmap truncation-prone volumes. See MODERNIZATION.md.
+	return [[[CSMemoryHandle alloc] initWithData:[NSData dataWithContentsOfFile:filename options:NSDataReadingMappedIfSafe error:NULL]] autorelease];
 }
 
 +(CSMemoryHandle *)memoryHandleForWriting
