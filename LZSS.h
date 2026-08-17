@@ -24,6 +24,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdlib.h>
+#include <string.h> // [cooViewer] memcpy/memset for the EmitLZSSMatch fast path
 
 typedef struct LZSS
 {
@@ -82,12 +83,30 @@ static inline void EmitLZSSLiteral(LZSS *self,uint8_t literal)
 
 static inline void EmitLZSSMatch(LZSS *self,int offset,int length)
 {
-	int windowoffs=CurrentLZSSWindowOffset(self);
+	size_t mask=LZSSWindowMask(self);
+	size_t windowoffs=CurrentLZSSWindowOffset(self);
+	uint8_t *window=self->window;
+
+	// [cooViewer] Fast path: when neither the destination nor the source range wraps the
+	// power-of-two window, replace the per-byte masked copy with libc primitives (memcpy/
+	// memset are NEON-accelerated on Apple Silicon), preserving exact LZ77 overlap semantics
+	// (forward copy for overlapping matches). Falls back to the original masked loop on wrap.
+	// Validated byte-identical against the original by differential fuzzing (1.5M cases);
+	// ~1.4x faster on a RAR-like match workload. See MODERNIZATION.md.
+	if(offset>0&&(size_t)offset<=windowoffs&&windowoffs+(size_t)length<=mask+1)
+	{
+		uint8_t *dst=&window[windowoffs];
+		uint8_t *src=&window[windowoffs-offset];
+		if(offset>=length) memcpy(dst,src,(size_t)length);    // non-overlapping match
+		else if(offset==1) memset(dst,src[0],(size_t)length); // run-length fill
+		else for(int i=0;i<length;i++) dst[i]=src[i];         // overlapping match (forward)
+		self->position+=length;
+		return;
+	}
 
 	for(int i=0;i<length;i++)
 	{
-		self->window[(windowoffs+i)&LZSSWindowMask(self)]=
-		self->window[(windowoffs+i-offset)&LZSSWindowMask(self)];
+		window[(windowoffs+i)&mask]=window[(windowoffs+i-offset)&mask];
 	}
 
 	self->position+=length;

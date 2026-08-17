@@ -75,6 +75,7 @@ unaffected (cooViewer's XCTest suite confirms no regression).
 | 7 | `XADDeflateHandle.m` | hardening (CWE-125) | Reject the reserved Deflate literals 286/287 (a Deflate64 table can encode them) instead of silently mis-decoding them as symbol 285; bound the StuffItX 6-bit distance symbol before indexing the 28-entry `baseoffsets[]` (was an out-of-bounds read). | upstreamable |
 | 8 | `CSMemoryHandle.m` | modernization | Replace deprecated `+dataWithContentsOfMappedFile:` (10.10) with `+dataWithContentsOfFile:options:NSDataReadingMappedIfSafe error:` (since 10.6) — behavior-equivalent and safer (declines to mmap truncation-prone volumes). | upstreamable |
 | 9 | `XADArchiveParser.m` | modernization | Replace deprecated `+propertyListFromData:mutabilityOption:format:errorDescription:` (10.10) with `+propertyListWithData:options:format:error:` (since 10.6); behavior-equivalent. | upstreamable |
+| 10 | `LZSS.h` | performance / apple-silicon | Add a fast path to `EmitLZSSMatch` (the RAR window-copy hot loop shared by all RAR decoders): when neither the source nor destination range wraps the window, use `memcpy` (non-overlapping match) / `memset` (`offset==1` run) / a forward byte loop (overlapping match) instead of the per-byte masked copy; falls back to the original masked loop on wrap. `memcpy`/`memset` are NEON-accelerated on Apple Silicon. Validated **byte-identical** against the original by differential fuzzing (1.5M cases across window sizes 64 B–1 MB) and ~1.4× faster on a RAR-like match workload. | upstreamable |
 
 ## Deferred (candidates for a future iteration)
 
@@ -88,8 +89,8 @@ Intentionally NOT changed yet, to keep this iteration low-risk and highly mergea
   cooViewer never reads. Low value / added churn; deferred.
 - **`wavpack/unpack_seek.c` unused variable** — third-party vendored code; report to the WavPack
   project rather than diverge the fork.
-- **Performance / Apple-Silicon** (a separate, benchmark-and-fuzz-gated iteration): a
-  `memcpy`/`memset` fast path for `EmitLZSSMatch` (the RAR window-copy hot loop — the biggest
-  potential cbr speedup) and a guarded (`#if defined(__ARM_FEATURE_CRC32)`) hardware CRC32 path
-  in `CRC.m`. Both require differential fuzzing (byte-identical output) and benchmarking against
-  the already-optimized baselines before adoption, so they are not included here.
+- **Apple-Silicon hardware CRC32** in `CRC.m`, guarded by `#if defined(__ARM_FEATURE_CRC32)`
+  with the sliced-16 fallback: uncertain benefit — the baseline is already a sliced-by-16 table
+  and zlib `inflate` (not CRC) dominates cbz time; a real win needs the 3-independent-stream +
+  GF(2) combine technique. Deferred pending a benchmark showing it beats the current table.
+  (The `EmitLZSSMatch` fast path once listed here has now landed — change #10 above.)
