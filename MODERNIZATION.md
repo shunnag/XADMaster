@@ -92,30 +92,39 @@ unaffected (cooViewer's XCTest suite confirms no regression).
 | 24 | `XADLZHParser.m` | hardening | Replace the level-0/1 filename VLA `uint8_t namebuffer[namelen]` (a zero-length VLA when `namelen==0`, undefined behaviour flagged by UBSan) with a fixed 256-byte buffer like the reference LHA header reader — `namelen` is a `uint8` so it always fits. | upstreamable |
 | 25 | `XADRARParser.m` | hardening | Compute the RAR `LHD_LARGE` 64-bit size extension with an unsigned shift; `(off_t)[fh readUInt32LE]<<32` overflowed `int64` for a high size word ≥ 2³¹ (signed-shift UB, found by UBSan fuzzing). The value only occupies bits 32–63; downstream size/bounds checks already reject bogus totals. | upstreamable |
 | 26 | `XADLZHOldHandles.m` | security (CWE-787) | Fix a heap-buffer-overflow in the old-LZH (lh1/lh2/lh3) decoder. `LHAready_made` filled `pt_len[]`/`pt_code[]` for `dat->d.st.np` codes — `1<<(MAX_DICBIT-6)` = 1024 on the st0 (lh3) path — but both arrays hold only `NPT` (128) entries, so a crafted lh3 stream taking the ready-made branch wrote ~900 entries past the end of the `LhADecrST` struct (ASan). `make_table` only consumes the first `NP` (17), so bounding the fill to `NPT` is behaviour-preserving. Also bound the `make_table` tree-node counter `avail` to the shared `left[]`/`right[]` size (`2*NC-1`), the classic LHArc make_table overrun. This is XADMaster's own C port of the LZH decoder (not the bundled libxad `LhA.c`, which is a static-only copy and was left untouched). Found by ASan fuzzing. | upstreamable |
+| 27 | `XADXZHandle.m` | hardening (DoS) | Stop an infinite loop in the XZ block decoder: `BlockDataState` re-read the filter chain forever when it returned 0 bytes without being at EOF (a crafted block that neither advances nor ends), hanging the app. Treat no-progress-without-EOF as illegal data — for a valid stream `actual==0` only coincides with EOF, so no decodable block is rejected. Found by fuzzing (`.xz` seed). | upstreamable |
+| 28 | `XADDeflateHandle.m` | hygiene | Autorelease the dynamic-Huffman `metacode` at allocation so the throwing paths that follow (two `raiseDecrunchException`, the literal/distance `XADPrefixCode` inits) cannot leak it. The autorelease variant needs no reindent — it supersedes the earlier deferral. Surfaces under LeakSanitizer. | upstreamable |
+| 29 | `XADXZHandle.m` | hardening | Read the XZ variable-length integer as `uint64_t`, accumulating only the low 64 bits; `(b&0x7f)<<pos` was an `int` shift that overflowed for `pos>=28` on a crafted overlong varint (UB, found by UBSan). Mirrors the RAR5 varint fix (#13). | upstreamable |
+| 30 | `XADStuffIt13Handle.m` | security (CWE-787) | Bound the StuffIt method-13 code-length run fills to `numcodes`. The case-34/35/36 runs advanced `i` past the `for(i<numcodes)` head test, overflowing the `int lengths[numcodes]` stack VLA (as small as 10 for the offset code; a case-36 run writes up to 73) — a controlled stack write. The bit reads still run so the stream stays in sync. Found by memory-safety audit; mirrors the `XADLZHStaticHandle` guard. | upstreamable |
+| 31 | `XADNowCompressHandle.m` | security (CWE-787) | Reject an out-of-range scatter index in the NowCompress code reader: `lengths[*source++]+=16` used a raw 0–255 stream byte as an index into `int lengths[numentries]`, and the 20-entry header code overflowed the stack VLA by up to ~940 bytes. The 256-entry callers are unaffected (0–255 < 256). Found by memory-safety audit. | upstreamable |
+| 32 | `libxad/clients/LhA.c` | security (CWE-787) | Bound the vendored libxad LHArc decoder like change #26's XADMaster copy: clamp `LHAread_c_len`'s count/zero-run to `NC` (heap overflow of `c_len[]`), and bound `make_table`'s tree-node counter `avail` to `2*NC-1` (`left[]`/`right[]` overrun). Bundled libxad (LGPL-2.1, © Dirk Stöcker); the `// [cooViewer] 2026` markers are the §2(a) change notices; kept fork-local. Found by memory-safety audit. | fork-local |
+| 33 | `libxad/clients/DMS.c` | security (CWE-787) | Reject over-long Huffman code counts in the vendored DMS (DiskMasher) decoder: `DMSread_tree_c` `n` (9 bits, up to 511) exceeded `c_len[DMSNC=510]`, and `DMSread_tree_p` `n` (5 bits, up to 31) exceeded `pt_len[DMSNPT=30]` — the latter the struct's last field, so one byte past the heap allocation. Bundled libxad; fork-local. Found by memory-safety audit. | fork-local |
+| 34 | `XADStuffItOldHandles.m` | hardening | Bound the StuffIt method-14 (`SIT14_ReadTree`) run-copy to `codesize`; a crafted tree pushed `i` past `code[]` into adjacent fields of the same struct (contained within the allocation, hence lower severity). Found by memory-safety audit. | upstreamable |
 
 ## Fuzzing
 
-Changes 12–25 came from an AddressSanitizer + UndefinedBehaviorSanitizer campaign: the framework is
-built with `-fsanitize=address,undefined` and a harness drives `XADArchive initWithData:` (format
-detect → parse → per-entry decompress) on mutated seed archives (zip/gzip/bzip2/StuffIt/WARC +
-crafted RAR/7z/CAB/LHA/ALZ magic), with a per-input watchdog that catches decode hangs. It found and
-fixed four wrapper-side stack-buffer overflows (Squeeze, Tar, a crafted LZMA/7z entry driving a
-wrapper clamp overflow, and an LZH pt-len table), a heap-buffer-overflow in XADMaster's own old-LZH
-(lh1/lh2/lh3) decoder (change 26), two denial-of-service conditions (a RAR5 parse hang and a
-negative-length huge allocation), and several undefined-behavior sites (overlapping `memcpy`,
-out-of-range shifts, signed overflow, a zero-length VLA). After these fixes the open+extract path
-runs clean under ASan across multi-million-iteration runs (5.1M with the full corpus). Fuzzing is nondeterministic — longer runs
-against a mature parser may still surface deeper edge cases; this harness lives in the cooViewer
-scratch tree for reuse. UBSan also flags benign enum-range loads inside the vendored
-`UniversalDetector` (Mozilla `universalchardet`); those are fixed in that library's own fork, not here.
+Changes 12–34 came from an AddressSanitizer + UndefinedBehaviorSanitizer campaign plus a targeted
+static memory-safety audit: the framework is built with `-fsanitize=address,undefined` and a harness
+drives `XADArchive initWithData:` (format detect → parse → per-entry decompress) on mutated seed
+archives (zip/gzip/bzip2/StuffIt/WARC + real xz/tar + crafted RAR/7z/CAB/LHA/ALZ magic), with a
+per-input watchdog that catches decode hangs. Fuzzing found and fixed wrapper-side stack-buffer
+overflows (Squeeze, Tar, a crafted LZMA/7z entry driving a wrapper clamp overflow, an LZH pt-len
+table), a heap-buffer-overflow in XADMaster's own old-LZH decoder (change 26), three denial-of-service
+conditions (a RAR5 parse hang, an XZ block-decode infinite loop, a negative-length huge allocation),
+and several undefined-behavior sites (overlapping `memcpy`, out-of-range shifts incl. the XZ/RAR5
+varints, signed overflow, a zero-length VLA). A follow-up audit of the remaining Huffman/run
+decoders then found controlled stack/heap overflows of the same class in StuffIt method 13
+(change 30), NowCompress (31), the vendored libxad LhA/DMS length tables (32, 33) and StuffIt
+method 14 (34). After these fixes the open+extract path runs clean under ASan across multi-million-
+iteration runs. Fuzzing is nondeterministic — longer runs against a mature parser may still surface
+deeper edge cases; this harness lives in the cooViewer scratch tree for reuse. UBSan also flags
+benign enum-range loads inside the vendored `UniversalDetector` (Mozilla `universalchardet`); those
+are fixed in that library's own fork, not here.
 
 ## Deferred (candidates for a future iteration)
 
 Intentionally NOT changed yet, to keep this iteration low-risk and highly mergeable:
 
-- **`XADDeflateHandle.m` leak-on-throw** (dynamic-Huffman `metacode` on a malformed Deflate64
-  block). The only correct fix (`@try/@finally`) reindents the whole block, churning the diff
-  against upstream for a tiny leak on a rare malformed path. Low value; deferred.
 - **`NSDateXAD.m` `NSGregorianCalendar`→`NSCalendarIdentifierGregorian`** needs a `#if` guard
   (the constant is 10.10+, upstream targets 10.6) and only affects entry mod-times, which
   cooViewer never reads. Low value / added churn; deferred.
