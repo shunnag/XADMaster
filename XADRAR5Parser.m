@@ -168,12 +168,20 @@ static inline BOOL IsZeroHeaderBlock(RAR5HeaderBlock block) { return IsZeroBlock
 	{
         [self readUntilSignature];
         [self.handle skipBytes:8];
-        
+
+		off_t lastblockstart=-1;
 		for(;;)
 		{
 			RAR5Block block=[self readBlockHeader];
 
 			if(IsZeroBlock(block)) break;
+
+			// [cooViewer] guarantee forward progress: a crafted RAR5 stream can make skipBlock
+			// seek to a non-advancing offset, re-reading the same block forever (a hang / DoS,
+			// found by fuzzing). Require each block to start strictly after the previous one.
+			// See MODERNIZATION.md.
+			if(block.start<=lastblockstart) break;
+			lastblockstart=block.start;
 
 			CSHandle *handle=block.fh;
 
