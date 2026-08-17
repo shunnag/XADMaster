@@ -52,7 +52,10 @@ static uint64_t ReadRAR5VInt(CSHandle *handle)
 		uint8_t byte=[handle readUInt8];
 
 		uint64_t meaningfulBits = (uint64_t) (byte & 0x7f);
-		res |= meaningfulBits << pos;
+		// [cooViewer] a malformed varint drives pos past 63; shifting a uint64 by >=64 is
+		// undefined behavior. Only accumulate the low 64 bits and keep consuming continuation
+		// bytes so the stream stays in sync (EOF terminates the loop). See MODERNIZATION.md.
+		if(pos<64) res |= meaningfulBits << pos;
 
 		if(!(byte&0x80)) return res;
 
@@ -732,6 +735,11 @@ inputParts:(NSArray *)parts isCorrupted:(BOOL)iscorrupted
 	if(!crypto)
 	{
 		NSData *passworddata=[passwordstring dataUsingEncoding:NSUTF8StringEncoding];
+
+		// [cooViewer] the KDF count exponent is attacker-controlled; 1<<strength is undefined
+		// behavior for strength>=31 and a denial of service (2^strength PBKDF2 iterations) for
+		// large values. unrar caps the RAR5 KDF Lg2Count at 24; reject anything outside [0,24].
+		if(strength<0||strength>24) [XADException raiseIllegalDataException];
 
 		uint8_t DK1[32],DK2[32],DK3[32];
 		PBKDF2_3([passworddata bytes],[passworddata length],[salt bytes],[salt length],
