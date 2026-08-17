@@ -159,7 +159,10 @@
 			int numdistances=CSInputNextBitStringLE(input,variant==XADStuffItXDeflateVariant?6:5)+1;
 			int nummetas=CSInputNextBitStringLE(input,4)+4;
 
-			XADPrefixCode *metacode=[self allocAndParseMetaCodeOfSize:nummetas]; // BUG: might leak if the following throw an exception!
+			// [cooViewer] autorelease the meta code as soon as we own it so the throwing paths
+			// below (the two raiseDecrunchException in the length loop, and the literal/distance
+			// XADPrefixCode inits which can raise) cannot leak it. Found under LeakSanitizer.
+			XADPrefixCode *metacode=[[self allocAndParseMetaCodeOfSize:nummetas] autorelease];
 			int total=numliterals+numdistances;
 			int lengths[total];
 			for(int i=0;i<total;)
@@ -193,7 +196,7 @@
 			literalcode=[[XADPrefixCode alloc] initWithLengths:lengths numberOfSymbols:numliterals maximumLength:15 shortestCodeIsZeros:YES];
 			distancecode=[[XADPrefixCode alloc] initWithLengths:lengths+numliterals numberOfSymbols:numdistances maximumLength:15 shortestCodeIsZeros:YES];
 
-			[metacode release];
+			// [cooViewer] metacode is autoreleased at allocation (above), so no manual release here.
 			storedblock=NO;
 		}
 		break;
