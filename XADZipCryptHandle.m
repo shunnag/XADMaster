@@ -35,7 +35,10 @@ static void UpdateKeys(XADZipCryptHandle *self,uint8_t b)
 static uint8_t DecryptByte(XADZipCryptHandle *self)
 {
 	uint16_t temp=self->key2|2;
-	return (temp*(temp^1))>>8;
+	// [cooViewer] temp and (temp^1) promote to int; their product (up to ~3.4e9) overflows a
+	// signed int (undefined behavior). The PKZIP key schedule is defined on unsigned 16-bit
+	// arithmetic, so compute the product unsigned. See MODERNIZATION.md.
+	return ((uint32_t)temp*(uint32_t)(temp^1))>>8;
 }
 
 -(id)initWithHandle:(CSHandle *)handle length:(off_t)length password:(NSData *)passdata testByte:(uint8_t)testbyte
