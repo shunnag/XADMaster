@@ -158,7 +158,19 @@
 	if(needsreset) { [self resetStream]; needsreset=NO; }
 
 	if(endofstream) return 0;
-	if(streampos+num>streamlength) num=(int)(streamlength-streampos);
+	// [cooViewer] streamlength can be an attacker-controlled value (e.g. a bogus uncompressed
+	// size) that is negative or exceeds INT_MAX. The original clamp
+	// `num=(int)(streamlength-streampos)` then wrapped to a value LARGER than num, overflowing
+	// the caller's buffer downstream (an LZMA/7z stack-buffer-overflow found by ASan fuzzing).
+	// Only ever shrink num, and treat a non-positive valid remaining length as EOF. A negative
+	// (bogus) streamlength is ignored here, so reads proceed until the decoder's real end.
+	// See MODERNIZATION.md.
+	if(streamlength>=0)
+	{
+		if(streampos>=streamlength) return 0;
+		off_t remaining=streamlength-streampos;
+		if(remaining<(off_t)num) num=(int)remaining;
+	}
 	if(!num) return 0;
 
 	int offs=0;
