@@ -1026,9 +1026,13 @@ isLastEntry:(BOOL)islastentry
 			int prevlength=[prevname length];
 			if(prevlength<namelength)
 			{
+				// [cooViewer] prevbytes/namebytes come from NSData and are NOT NUL-terminated;
+				// the old loop relied on a terminator and could read past either buffer. Bound
+				// by prevlength (prevlength<namelength is guaranteed above), then require
+				// prevname to be a full path-component prefix. See MODERNIZATION.md.
 				int i=0;
-				while(namebytes[i]&&prevbytes[i]==namebytes[i]) i++;
-				if(!prevbytes[i]&&namebytes[i]=='/')
+				while(i<prevlength&&prevbytes[i]==namebytes[i]) i++;
+				if(i==prevlength&&namebytes[i]=='/')
 				[prevdict setObject:[NSNumber numberWithBool:YES] forKey:XADIsDirectoryKey];
 			}
 		}
