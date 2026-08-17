@@ -425,8 +425,13 @@ static const uint8_t *FindSignature(const uint8_t *ptr,int length)
 
 	if(block->flags&LHD_LARGE)
 	{
-		block->datasize+=(off_t)[fh readUInt32LE]<<32;
-		header.size+=(off_t)[fh readUInt32LE]<<32;
+		// [cooViewer] the high 32-bit size word is attacker-controlled; shifting it as a
+		// signed off_t (e.g. 0xffffffff<<32) overflows int64 (undefined behaviour, flagged
+		// by UBSan). Shift as uint64_t — the value only occupies bits 32-63 — then fold into
+		// the off_t total. Downstream size/bounds checks already reject bogus totals.
+		// Found by UBSan fuzzing. See MODERNIZATION.md.
+		block->datasize+=(off_t)((uint64_t)[fh readUInt32LE]<<32);
+		header.size+=(off_t)((uint64_t)[fh readUInt32LE]<<32);
 	}
 
 	header.namedata=[fh readDataOfLength:header.namelength];
