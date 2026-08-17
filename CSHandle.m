@@ -279,9 +279,13 @@ CSReadValueImpl(uint32_t,readID,CSUInt32BE)
 	do
 	{
 		actual=[self readAtMost:sizeof(buffer) toBuffer:buffer];
-		[data appendBytes:buffer length:actual];
+		// [cooViewer] a malformed stream can make a handle's readAtMost: return a negative
+		// count; appendBytes:length: would then treat it as a huge NSUInteger and attempt an
+		// impossible allocation. Only append positive reads and stop on <=0. Found by ASan
+		// fuzzing. See MODERNIZATION.md.
+		if(actual>0) [data appendBytes:buffer length:actual];
 	}
-	while(actual!=0);
+	while(actual>0);
 
 	return data;
 }
