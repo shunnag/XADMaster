@@ -799,6 +799,9 @@ static xadUINT16 DMSread_tree_c(struct DMSData *d)
 
   n = DMSGETBITS(9);
   DMSDROPBITS(9);
+  /* [cooViewer] 2026: n is a 9-bit field (up to 511) but c_len holds only DMSNC (510) entries;
+     reject an over-long count so the fill below cannot overflow c_len[]. */
+  if(n > DMSNC) return 1;
   if(n > 0)
   {
     for(i=0; i<n; i++)
@@ -829,6 +832,9 @@ static xadUINT16 DMSread_tree_p(struct DMSData *d)
 
   n = DMSGETBITS(5);
   DMSDROPBITS(5);
+  /* [cooViewer] 2026: n is a 5-bit field (up to 31) but pt_len holds only DMSNPT (30) entries and
+     is the last field of the heap struct, so n==31 writes one byte past the allocation. Reject. */
+  if(n > DMSNPT) return 1;
   if(n > 0)
   {
     for(i=0; i<n; i++)

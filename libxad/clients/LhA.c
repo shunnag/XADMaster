@@ -244,6 +244,16 @@ static void LHAmake_table(struct LhADecrData *dat, xadINT16 nchar, xadUINT8 bitl
       {
         if(*p == 0)
         {
+          /* [cooViewer] 2026: malformed bit lengths can drive avail past the shared left[]/right[]
+             arrays (sized 2*NC-1), writing tree nodes off the end of the LhADecrData struct. Reject
+             when no node slot remains (the classic LHArc make_table overrun; the total==0x10000
+             check does not bound tree depth). Same fix as the sibling XADLZHOldHandles. */
+          if(avail >= 2 * NC - 1)
+          {
+            dat->io->xio_Error = XADERR_ILLEGALDATA;
+            dat->io->xio_Flags |= XADIOF_ERROR;
+            return;
+          }
           dat->d.st.right[avail] = dat->d.st.left[avail] = 0;
           *p = avail++;
         }
@@ -320,7 +330,11 @@ static void LHAread_c_len(struct LhADecrData *dat)
   else
   {
     i = 0;
-    while(i < n)
+    /* [cooViewer] 2026: n is read from CBIT (9) bits, so it can reach 511 while c_len holds only
+       NC (510) entries; bound the loop by NC so a crafted count cannot write past c_len[]. This
+       heap-buffer-overflow of the LhADecrData tail is the same defect fixed in the sibling
+       XADLZHStaticHandle. See MODERNIZATION.md. */
+    while(i < n && i < NC)
     {
       c = dat->d.st.pt_table[dat->bitbuf >> (16 - 8)];
       if(c >= NT)
@@ -346,7 +360,9 @@ static void LHAread_c_len(struct LhADecrData *dat)
           c = LHAgetbits(dat, 4) + 3;
         else
           c = LHAgetbits(dat, CBIT) + 20;
-        while(--c >= 0)
+        /* [cooViewer] 2026: the zero-run length c is attacker-controlled (up to ~531); bound the
+           fill by NC so it cannot overflow c_len[] and the surrounding struct. */
+        while(--c >= 0 && i < NC)
           dat->d.st.c_len[i++] = 0;
       }
       else
