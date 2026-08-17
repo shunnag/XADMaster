@@ -69,10 +69,15 @@ firstOffset:(uint32_t)firstoffset delta:(int32_t)delta
 {
 	int numentries=(firstoffset+delta-headeroffset-4)/8-1;
 
+	// [cooViewer] numentries is derived from attacker offsets and can be negative or very large;
+	// malloc(numentries*…) then wrapped/failed without a NULL check, and the following blocks[…]
+	// writes deref NULL. Reject a non-positive count, size in size_t, and null-check. Found by audit.
+	if(numentries<0) [XADException raiseIllegalDataException];
 	if(maxblocks<numentries)
 	{
 		free(blocks);
-		blocks=malloc(numentries*sizeof(blocks[0]));
+		blocks=malloc((size_t)numentries*sizeof(blocks[0]));
+		if(!blocks) [XADException raiseOutOfMemoryException];
 		maxblocks=numentries;
 	}
 

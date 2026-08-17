@@ -141,7 +141,9 @@ static CSHandle *HandleForElement(XADStuffItXParser *self,StuffItXElement *eleme
 		case 0: // Brimstone/PPMd
 		{
 			int exponent=[handle readUInt8];
-			if(exponent>31) [XADException raiseDecrunchException];
+			// [cooViewer] exponent==31 made `1<<31` a signed-int overflow (UB, and a negative
+			// allocsize flowing into the PPMd suballocator). Bound to <=30. Found by audit.
+			if(exponent>30) [XADException raiseDecrunchException];
 			int allocsize=1<<exponent;
 			int order=[handle readUInt8];
 			handle=[[[XADStuffItXBrimstoneHandle alloc] initWithHandle:handle
@@ -156,7 +158,11 @@ static CSHandle *HandleForElement(XADStuffItXParser *self,StuffItXElement *eleme
 
 		case 2: // Darkhorse
 		{
-			int windowsize=1<<[handle readUInt8];
+			// [cooViewer] the shift amount is an attacker byte (0..255); a shift >=31 is UB. Bound
+			// it before `1<<shift`. Found by a memory-safety audit.
+			int shift=[handle readUInt8];
+			if(shift>30) [XADException raiseDecrunchException];
+			int windowsize=1<<shift;
 			if(windowsize<0x100000) windowsize=0x100000;
 			handle=[[[XADStuffItXDarkhorseHandle alloc] initWithHandle:handle
 			length:uncompressedlength windowSize:windowsize] autorelease];

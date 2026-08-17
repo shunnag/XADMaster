@@ -77,6 +77,10 @@ static void BuildCodeFromTree(XADPrefixCode *code,int *tree,int node,int numnode
 	}
 	else
 	{
+		// [cooViewer] an internal node reads both children tree[node] and tree[node+1]; for
+		// node==numnodes-1 (or a negative node) the access runs past the nodes[numnodes] VLA.
+		// Found by a memory-safety audit.
+		if(node<0 || node+1>=numnodes) [XADException raiseDecrunchException];
 		[code startZeroBranch];
 		BuildCodeFromTree(code,tree,tree[node],numnodes,depth+1);
 		[code startOneBranch];

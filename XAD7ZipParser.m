@@ -1043,7 +1043,9 @@ name:(NSString *)name propertiesToAdd:(NSMutableDictionary *)props
 	if(length<2) return NO;
 	if(bytes[0]!='M' || bytes[1]!='Z') return NO;
 
-	for(int offs=0;offs<length+7;offs+=512)
+	// [cooViewer] Is7ZipSignature memcmp's up to 7 bytes at bytes+offs; the old bound (offs<length+7)
+	// let offs reach length-1 and read past the buffer. Require the whole signature to fit. Audit.
+	for(int offs=0;offs+7<=length;offs+=512)
 	{
 		if(Is7ZipSignature(bytes+offs))
 		{

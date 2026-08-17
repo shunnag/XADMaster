@@ -19,6 +19,7 @@
  * MA 02110-1301  USA
  */
 #import "XADBlockHandle.h"
+#import "XADException.h"
 
 @implementation XADBlockHandle
 
@@ -60,8 +61,12 @@ firstBlock:(uint32_t)first headerSize:(off_t)headersize
 {
 	numblocks=0;
 	uint32_t block=first;
+	// [cooViewer] a valid FAT chain visits each block at most once, so it cannot be longer than
+	// totalblocks; a cyclic/self-referential chain (e.g. blocktable[n]==n) otherwise loops forever
+	// (DoS) and overflows numblocks. Reject when the walk exceeds the block count. Found by audit.
 	while(block<totalblocks)
 	{
+		if(numblocks>=totalblocks) [XADException raiseIllegalDataException];
 		block=blocktable[block];
 		numblocks++;
 	}
