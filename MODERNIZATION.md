@@ -100,6 +100,20 @@ unaffected (cooViewer's XCTest suite confirms no regression).
 | 32 | `libxad/clients/LhA.c` | security (CWE-787) | Bound the vendored libxad LHArc decoder like change #26's XADMaster copy: clamp `LHAread_c_len`'s count/zero-run to `NC` (heap overflow of `c_len[]`), and bound `make_table`'s tree-node counter `avail` to `2*NC-1` (`left[]`/`right[]` overrun). Bundled libxad (LGPL-2.1, © Dirk Stöcker); the `// [cooViewer] 2026` markers are the §2(a) change notices; kept fork-local. Found by memory-safety audit. | fork-local |
 | 33 | `libxad/clients/DMS.c` | security (CWE-787) | Reject over-long Huffman code counts in the vendored DMS (DiskMasher) decoder: `DMSread_tree_c` `n` (9 bits, up to 511) exceeded `c_len[DMSNC=510]`, and `DMSread_tree_p` `n` (5 bits, up to 31) exceeded `pt_len[DMSNPT=30]` — the latter the struct's last field, so one byte past the heap allocation. Bundled libxad; fork-local. Found by memory-safety audit. | fork-local |
 | 34 | `XADStuffItOldHandles.m` | hardening | Bound the StuffIt method-14 (`SIT14_ReadTree`) run-copy to `codesize`; a crafted tree pushed `i` past `code[]` into adjacent fields of the same struct (contained within the allocation, hence lower severity). Found by memory-safety audit. | upstreamable |
+| 35 | `XADTarParser.m` | security (CWE-787) | Bound the PAX extended-header pair size before the `char key_val_pair[next_pair_size]` VLA + `memset`. `next_pair_size` is a PAX length field minus the digits read; a negative value wrapped the VLA/memset to a huge size (stack smash) and a large value overflowed the stack. Require it to fit the remaining header. Found by audit. | upstreamable |
+| 36 | `XADArParser.m` | security (CWE-787) | Bound the `ar`/`.deb` BSD long-name length (a 12-byte decimal field, unbounded) before the `uint8_t namebuf[namelen]` VLA — a large value overflowed the stack, a negative one was UB. Found by audit. | upstreamable |
+| 37 | `XADISO9660Parser.m` | security (CWE-787/DoS/CWE-125) | Three SUSP fixes: bound the "CE" continuation length before the `uint8_t system[currlength]` VLA (attacker uint32 → stack overflow); cap CE→CE chains (a cyclic chain looped forever); and fix the "SL" component guard to `offs+2+complen>length` (the component bytes start at `offs+2`, so the old guard over-read up to 2 bytes). Found by audit. | upstreamable |
+| 38 | `XADStuffItXCyanideHandle.m` | security (CWE-190/CWE-787) | Size the Cyanide BWT allocation as `(size_t)blocksize*6` (it was computed in uint32 and wrapped, e.g. `blocksize=0x2AAAAAAB` → `malloc(2)` while the BWT/MTF routines write `blocksize` bytes → heap overflow), null-check it, and bound `firstindex<blocksize`. Mirrors the sibling Iron handle. Found by audit. | upstreamable |
+| 39 | `XADStuffItArsenicHandle.m` | security (CWE-190/CWE-787) | Cap the Arsenic zero-run loop: it was uncapped, so ~31 iterations overflowed `zerostate`/`zerocount` to negative, which passed the `>blocksize` guard and made `memset` run with a huge length (heap overflow). Bound `zerostate` (so `2*zerostate` cannot overflow) and reject a run beyond `blocksize`. Found by audit. | upstreamable |
+| 40 | `XADStuffItXEnglishHandle.m` | security (CWE-190/CWE-787) | Reject an out-of-range dictionary `index` inside the base-52 accumulation loop; it was uncapped, so ~6 letters overflowed `index` to negative, bypassing the `index>=NumberOfWords` check and making `pointers[index]`/`memcpy` read+write out of bounds (`wordbuf` is 33 bytes). `index` is monotone increasing so a valid word never trips it. Found by audit. | upstreamable |
+| 41 | `XAD7ZipParser.m` | hardening (CWE-125) | Fix the 7-Zip SFX recognizer scan bound: `Is7ZipSignature` memcmp's up to 7 bytes at `bytes+offs`, but the loop ran while `offs<length+7`, reading past the buffer for any `MZ` file. Require the whole signature to fit. Found by audit. | upstreamable |
+| 42 | `XADBlockHandle.m` | hardening (DoS) | Cap the CFBF FAT-chain walk to the block count: a cyclic/self-referential sector chain otherwise looped forever and overflowed `numblocks`. Found by audit. | upstreamable |
+| 43 | `XADStuffItXParser.m` | hardening | Bound two attacker-controlled shift amounts: the Brimstone `exponent` (==31 made `1<<31` signed-overflow UB with a negative alloc size flowing into the PPMd suballocator) and the Darkhorse window shift (`1<<readUInt8`, UB for ≥31). Found by audit. | upstreamable |
+| 44 | `XADNowCompressHandle.m` | hardening (CWE-476) | Reject a negative `numentries`, size the block-table `malloc` in `size_t`, and null-check it; `numentries` is derived from attacker offsets and the following `blocks[…]` writes deref a failed (NULL) or wrapped allocation. Found by audit. | upstreamable |
+| 45 | `XADARCDistillHandle.m` | hardening (CWE-125) | Guard the ARC/Distill tree walk: an internal node reads both children `tree[node]` and `tree[node+1]`, so `node==numnodes-1` (or a negative node) ran past the `nodes[numnodes]` VLA. Found by audit. | upstreamable |
+| 46 | `libxad/clients/LhF.c` | security (CWE-787) | Bound the LhF Huffman code length: `k` is built from an unbounded run of 1-bits, and `++data0[k-1]` (16-entry histogram) writes far past the array for large `k` (heap overflow). Reject `k>16`. Bundled libxad (LGPL-2.1); fork-local. Found by audit. | fork-local |
+| 47 | `libxad/clients/Ace.c` | hardening (CWE-787) | Reject `uplim>=ACEsvwd_cnt` in the ACE code reader: `uplim` is a 4-bit field (0..15) but `wd_svwd` has only 15 entries, so `uplim==15` wrote `wd_svwd[15]`, one past the array (corrupting the adjacent struct field). Bundled libxad; fork-local. Found by audit. | fork-local |
+| 48 | `libxad/clients/xadIO_Compress.c` | hardening (CWE-190) | Bound the vendored `.Z` LZW maxbits to 9..16 (attacker-controlled, up to 31 → `1<<31` UB and a `maxmaxcode`-sized allocation that wraps on 32-bit). Mirrors the XADMaster `.Z` fix (#21). Bundled libxad; fork-local. Found by audit. | fork-local |
 
 ## Fuzzing
 
@@ -115,11 +129,19 @@ and several undefined-behavior sites (overlapping `memcpy`, out-of-range shifts 
 varints, signed overflow, a zero-length VLA). A follow-up audit of the remaining Huffman/run
 decoders then found controlled stack/heap overflows of the same class in StuffIt method 13
 (change 30), NowCompress (31), the vendored libxad LhA/DMS length tables (32, 33) and StuffIt
-method 14 (34). After these fixes the open+extract path runs clean under ASan across multi-million-
-iteration runs. Fuzzing is nondeterministic — longer runs against a mature parser may still surface
-deeper edge cases; this harness lives in the cooViewer scratch tree for reuse. UBSan also flags
-benign enum-range loads inside the vendored `UniversalDetector` (Mozilla `universalchardet`); those
-are fixed in that library's own fork, not here.
+method 14 (34). A second audit pass over the header/structure parsers and every `libxad/clients/*.c`
+then found the same overflow classes in the parse phase: attacker-sized stack VLAs (Tar PAX 35,
+`ar` 36, ISO9660 CE 37), 32-bit size/shift overflows feeding allocations or copies (StuffItX
+Cyanide 38 / Arsenic 39 / English 40 / Brimstone-Darkhorse 43, NowCompress 44, libxad `.Z` 48),
+out-of-bounds reads (7-Zip SFX 41, ARC/Distill 45, ISO9660 SL 37), unbounded loops (CFBF FAT chain
+42, ISO9660 CE chain 37) and vendored libxad histogram/table overruns (LhF 46, ACE 47). After these
+fixes the open+extract path runs clean under ASan across multi-million-iteration runs. Fuzzing is
+nondeterministic — longer runs against a mature parser may still surface deeper edge cases; this
+harness lives in the cooViewer scratch tree for reuse. UBSan also flags benign enum-range loads
+inside the vendored `UniversalDetector` (Mozilla `universalchardet`); those are fixed in that
+library's own fork, not here. One low-severity 1-byte lookahead over-read in `universalchardet`
+`JpCntx.cpp` (`GetOrder` dereferencing `*(str+1)` at buffer end) is inherited from upstream Mozilla
+and left as-is to avoid diverging the detector.
 
 ## Deferred (candidates for a future iteration)
 
