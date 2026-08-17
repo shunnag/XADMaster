@@ -191,6 +191,15 @@ static uint64_t ParseInteger(CSHandle *fh);
 				currhandle=nil;
 				state=BlockPaddingState;
 			}
+			else if(actual==0)
+			{
+				// [cooViewer] the filter produced no bytes yet is not at EOF: on a crafted
+				// block this state neither advances bytesread nor changes state, so the
+				// outer while-loop spins forever (a decode hang / DoS found by fuzzing).
+				// For a valid stream actual==0 only coincides with atEndOfFile, so treating
+				// no-progress as illegal data cannot reject a decodable block.
+				[XADException raiseIllegalDataException];
+			}
 		}
 		break;
 
@@ -305,7 +314,11 @@ static uint64_t ParseInteger(CSHandle *fh)
 	do
 	{
 		b=[fh readUInt8];
-		res|=(b&0x7f)<<pos;
+		// [cooViewer] (b&0x7f) is an int; a crafted overlong varint drives pos to 28+ and
+		// `127<<28` overflows int (UB, flagged by UBSan). Shift as uint64_t and only accumulate
+		// the low 64 bits (extra continuation bytes are still consumed, so the stream stays in
+		// sync). Mirrors the RAR5 varint fix.
+		if(pos<64) res|=(uint64_t)(b&0x7f)<<pos;
 		pos+=7;
 	}
 	while(b&0x80);
