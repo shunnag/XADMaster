@@ -109,6 +109,13 @@
 		XADRAR30Filter *firstfilter=[stack objectAtIndex:0];
 		off_t start=filterstart;
 		int length=[firstfilter length];
+
+		// The filter block is copied into the fixed-size RARVirtualMachine.memory
+		// buffer (RARProgramMemorySize+3 bytes) starting at offset 0, so reject a
+		// filter length that would overflow it (including negative values from a
+		// truncated attacker-controlled uint32_t blocklength).
+		if(length<0||(size_t)length>RARProgramMemorySize) [XADException raiseIllegalDataException];
+
 		off_t end=start+length;
 
 		// Remove the filter start marker and unpack enough data to run the filter on.
