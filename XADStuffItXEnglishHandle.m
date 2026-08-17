@@ -105,6 +105,12 @@ extern uint8_t StuffItXEnglishDictionary[];
 			index*=52;
 			if(c2<='Z') index+=c2-'A'+26+1;
 			else index+=c2-'a'+1;
+			// [cooViewer] index was uncapped; ~6 letters overflow it to a negative value, which
+			// passes the index>=NumberOfWords check below and makes pointers[index]/memcpy read+
+			// write out of bounds (wordbuf is a fixed 33-byte ivar). Reject as soon as index leaves
+			// the valid range — it is monotone increasing, so a valid word (index<NumberOfWords)
+			// never trips this. Found by a memory-safety audit.
+			if(index<0 || index>=NumberOfWords) [XADException raiseIllegalDataException];
 		}
 
 		if(index>=NumberOfWords) [XADException raiseIllegalDataException];

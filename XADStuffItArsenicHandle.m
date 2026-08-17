@@ -189,8 +189,15 @@ static int NextArithmeticBitString(ArithmeticDecoder *decoder,ArithmeticModel *m
 			int zerostate=1,zerocount=0;
 			while(sel<2)
 			{
+				// [cooViewer] the zero-run loop was uncapped; ~31 iterations overflow zerostate/
+				// zerocount to a negative value, which then passes the numbytes+zerocount>blocksize
+				// guard below and makes memset run with a huge length -> heap overflow. Bound
+				// zerostate (so 2*zerostate cannot overflow) and reject a run beyond blocksize.
+				// Found by a memory-safety audit.
+				if(zerostate<=0 || zerostate>0x20000000) [XADException raiseDecrunchException];
 				if(sel==0) zerocount+=zerostate;
 				else if(sel==1) zerocount+=2*zerostate;
+				if(zerocount<0 || zerocount>blocksize) [XADException raiseDecrunchException];
 				zerostate*=2;
 				sel=NextArithmeticSymbol(&decoder,&selectormodel);
 			}

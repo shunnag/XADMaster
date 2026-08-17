@@ -60,8 +60,14 @@
 
 	if(blocksize>currsize)
 	{
+		// [cooViewer] blocksize*6 was computed in uint32 and wrapped (e.g. blocksize=0x2AAAAAAB
+		// -> malloc(2)) while the BWT/MTF routines below write blocksize bytes -> heap overflow.
+		// Size the allocation in size_t and null-check it, like the sibling Iron handle. Found by
+		// a memory-safety audit.
+		if((size_t)blocksize>SIZE_MAX/6) [XADException raiseIllegalDataException];
 		free(block);
-		block=malloc(blocksize*6);
+		block=malloc((size_t)blocksize*6);
+		if(!block) [XADException raiseOutOfMemoryException];
 		sorted=block+blocksize;
 		table=(uint32_t *)(block+2*blocksize);
 		currsize=blocksize;
@@ -69,6 +75,9 @@
 
 	[self readTernaryCodedBlock:blocksize numberOfSymbols:numsymbols];
 
+	// [cooViewer] firstindex is the BWT primary index; it must be within the block (Iron guards
+	// this too) or UnsortBWT indexes out of bounds.
+	if(blocksize && firstindex>=blocksize) [XADException raiseIllegalDataException];
 	DecodeM1FFNBlock(sorted,blocksize,2);
 	UnsortBWT(block,sorted,blocksize,firstindex,table);
 
