@@ -104,7 +104,11 @@
 			[dict setObject:[NSDate XADDateWithMSDOSDateTime:time] forKey:XADLastModificationDateKey];
 
 			int namelen=[fh readUInt8];
-			uint8_t namebuffer[namelen];
+			// [cooViewer] namelen is a uint8 (0..255); the original VLA was zero-length when
+			// namelen==0 (undefined behaviour, flagged by UBSan). Use a fixed 256-byte buffer
+			// like the reference LHA header reader — it always fits and removes the VLA UB.
+			// See MODERNIZATION.md.
+			uint8_t namebuffer[256];
 			[fh readBytes:namelen toBuffer:namebuffer];
 
 			int actualnamelen=0;

@@ -105,7 +105,14 @@
 			if(n==specialindex)
 			{
 				int zeroes=CSInputNextBitString(input,2);
-				for(int i=0;i<zeroes;i++) codelengths[n++]=0;
+				// [cooViewer] the zero-run can run past codelengths[] (an int[num] VLA).
+				// The reference LHA read_pt_len decodes into a fixed-size pt_len[NPT] that
+				// silently absorbs an over-long run, but this exact-size VLA overflowed the
+				// stack on a crafted pt-len table (the sibling allocAndParseLiteralCode below
+				// already guards its own zero-run). Clamp to num to preserve the reference's
+				// "extra zeros are ignored" semantics without rejecting valid archives.
+				// Found by ASan fuzzing. See MODERNIZATION.md.
+				for(int i=0;i<zeroes && n<num;i++) codelengths[n++]=0;
 			}
 		}
 
