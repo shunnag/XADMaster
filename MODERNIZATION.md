@@ -91,6 +91,7 @@ unaffected (cooViewer's XCTest suite confirms no regression).
 | 23 | `XADLZHStaticHandle.m` | security (CWE-787) | Clamp the LZH pt-len table zero-run in `allocAndParseCodeOfWidth:specialIndex:` to the `int codelengths[num]` VLA. The sibling `allocAndParseLiteralCode` already bounds its own zero-run, but this variant did not, so a crafted pt-len table wrote past the stack VLA (ASan dynamic-stack-buffer-overflow). Clamp to `num` to match the reference LHA `read_pt_len` (whose fixed-size `pt_len[NPT]` silently absorbs the overrun) without rejecting valid archives. Found by ASan fuzzing. | upstreamable |
 | 24 | `XADLZHParser.m` | hardening | Replace the level-0/1 filename VLA `uint8_t namebuffer[namelen]` (a zero-length VLA when `namelen==0`, undefined behaviour flagged by UBSan) with a fixed 256-byte buffer like the reference LHA header reader — `namelen` is a `uint8` so it always fits. | upstreamable |
 | 25 | `XADRARParser.m` | hardening | Compute the RAR `LHD_LARGE` 64-bit size extension with an unsigned shift; `(off_t)[fh readUInt32LE]<<32` overflowed `int64` for a high size word ≥ 2³¹ (signed-shift UB, found by UBSan fuzzing). The value only occupies bits 32–63; downstream size/bounds checks already reject bogus totals. | upstreamable |
+| 26 | `XADLZHOldHandles.m` | security (CWE-787) | Fix a heap-buffer-overflow in the old-LZH (lh1/lh2/lh3) decoder. `LHAready_made` filled `pt_len[]`/`pt_code[]` for `dat->d.st.np` codes — `1<<(MAX_DICBIT-6)` = 1024 on the st0 (lh3) path — but both arrays hold only `NPT` (128) entries, so a crafted lh3 stream taking the ready-made branch wrote ~900 entries past the end of the `LhADecrST` struct (ASan). `make_table` only consumes the first `NP` (17), so bounding the fill to `NPT` is behaviour-preserving. Also bound the `make_table` tree-node counter `avail` to the shared `left[]`/`right[]` size (`2*NC-1`), the classic LHArc make_table overrun. This is XADMaster's own C port of the LZH decoder (not the bundled libxad `LhA.c`, which is a static-only copy and was left untouched). Found by ASan fuzzing. | upstreamable |
 
 ## Fuzzing
 
@@ -98,11 +99,12 @@ Changes 12–25 came from an AddressSanitizer + UndefinedBehaviorSanitizer campa
 built with `-fsanitize=address,undefined` and a harness drives `XADArchive initWithData:` (format
 detect → parse → per-entry decompress) on mutated seed archives (zip/gzip/bzip2/StuffIt/WARC +
 crafted RAR/7z/CAB/LHA/ALZ magic), with a per-input watchdog that catches decode hangs. It found and
-fixed four stack-buffer overflows (Squeeze, Tar, a crafted LZMA/7z entry driving a wrapper clamp
-overflow, and an LZH pt-len table), two denial-of-service conditions (a RAR5 parse hang and a
+fixed four wrapper-side stack-buffer overflows (Squeeze, Tar, a crafted LZMA/7z entry driving a
+wrapper clamp overflow, and an LZH pt-len table), a heap-buffer-overflow in XADMaster's own old-LZH
+(lh1/lh2/lh3) decoder (change 26), two denial-of-service conditions (a RAR5 parse hang and a
 negative-length huge allocation), and several undefined-behavior sites (overlapping `memcpy`,
 out-of-range shifts, signed overflow, a zero-length VLA). After these fixes the open+extract path
-runs clean under ASan across multi-million-iteration runs. Fuzzing is nondeterministic — longer runs
+runs clean under ASan across multi-million-iteration runs (5.1M with the full corpus). Fuzzing is nondeterministic — longer runs
 against a mature parser may still surface deeper edge cases; this harness lives in the cooViewer
 scratch tree for reuse. UBSan also flags benign enum-range loads inside the vendored
 `UniversalDetector` (Mozilla `universalchardet`); those are fixed in that library's own fork, not here.
@@ -111,14 +113,6 @@ scratch tree for reuse. UBSan also flags benign enum-range loads inside the vend
 
 Intentionally NOT changed yet, to keep this iteration low-risk and highly mergeable:
 
-- **`libxad/clients/LhA.c` heap-buffer-overflow** in the old-method (lh1/lh2/lh3) LZH decoder:
-  ASan fuzzing found a 1-byte WRITE past the end of the `struct LhADecrData` region (a Huffman
-  code-length table build overrunning the trailing `c_len[]`/`pt_len[]` byte arrays), reached via
-  `XADLZH3Handle -unpackData` → `LhA_Decrunch`. This is **vendored third-party code** (Dirk
-  Stöcker's libxad, bundled under `libxad/`), and the overflow is driven by malformed in-stream
-  code lengths, so it cannot be cleanly prevented from the XADMaster wrapper (`XADLZHOldHandles.m`)
-  without reimplementing the table decode. Per this fork's policy we do not diverge the vendored
-  tree; report upstream to libxad instead. A reproducer is saved in the cooViewer scratch tree.
 - **`XADDeflateHandle.m` leak-on-throw** (dynamic-Huffman `metacode` on a malformed Deflate64
   block). The only correct fix (`@try/@finally`) reindents the whole block, churning the diff
   against upstream for a tiny leak on a rare malformed path. Low value; deferred.

@@ -265,6 +265,16 @@ static void LHAmake_table(struct LhADecrData *dat, xadINT16 nchar, xadUINT8 bitl
       {
         if(*p == 0)
         {
+          // [cooViewer] malformed bit lengths can drive avail past the shared left[]/right[]
+          // arrays (sized 2*NC-1), writing tree nodes off the end of the struct. Reject when no
+          // node slot remains (the classic LHArc make_table overrun; the total==0x10000 check
+          // above does not bound tree depth).
+          if(avail >= 2 * NC - 1)
+          {
+            dat->io->xio_Error = XADERR_ILLEGALDATA;
+            dat->io->xio_Flags |= XADIOF_ERROR;
+            return;
+          }
           dat->d.st.right[avail] = dat->d.st.left[avail] = 0;
           *p = avail++;
         }
@@ -586,7 +596,12 @@ static void LHAready_made(struct LhADecrData *dat, xadINT32 method)
   j = *tbl++;
   weight = 1 << (16 - j);
   code = 0;
-  for(i = 0; i < dat->d.st.np; i++)
+  // [cooViewer] np is 1<<(MAX_DICBIT-6) == 1024 for the st0 (lh3) path, but pt_len[]/pt_code[]
+  // are only NPT (128) entries, so this fixed-tree fill wrote ~900 entries past both arrays and
+  // off the end of the LhADecrST struct (ASan heap-buffer-overflow on a crafted lh3 stream that
+  // takes the ready-made branch). make_table() below only consumes the first NP (17) entries, so
+  // bounding the fill to NPT changes nothing for valid input. Found by ASan fuzzing.
+  for(i = 0; i < dat->d.st.np && i < NPT; i++)
   {
     while(*tbl == i)
     {
