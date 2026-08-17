@@ -68,7 +68,10 @@ maximumLength:(int)maximumlength context:(void *)contextptr
 			}
 		}
 
-		memcpy(buffer,&buffer[actual-maximumlength+1],maximumlength-1);
+		// [cooViewer] the carry-over ranges overlap when actual < 2*maximumlength-2, so this
+		// must be memmove, not memcpy (overlapping memcpy is undefined behavior; caught by
+		// AddressSanitizer fuzzing). See MODERNIZATION.md.
+		memmove(buffer,&buffer[actual-maximumlength+1],maximumlength-1);
 		actual=[self readAtMost:sizeof(buffer)-maximumlength+1 toBuffer:&buffer[maximumlength-1]]+maximumlength-1;
 	}
 
