@@ -34,7 +34,13 @@
 	{
 		blockmode=(compressflags&0x80)!=0;
 
-		int maxsymbols=1<<(compressflags&0x1f);
+		// [cooViewer] the .Z maxbits (low 5 bits of compressflags) is attacker-controlled; a
+		// value of 31 makes 1<<31 undefined behavior, and 17..30 requests a multi-GB LZW table.
+		// Valid .Z maxbits is 9..16 — reject anything above 16 before the shift. Found by UBSan
+		// fuzzing. See MODERNIZATION.md.
+		int maxbits=compressflags&0x1f;
+		if(maxbits>16) [XADException raiseDecrunchException];
+		int maxsymbols=1<<maxbits;
 		if(maxsymbols<=256) [XADException raiseDecrunchException];
 
 		lzw=AllocLZW(maxsymbols,blockmode?1:0);

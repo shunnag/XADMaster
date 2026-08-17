@@ -172,6 +172,11 @@ static void FindAttribute(CSHandle *handle,int attribute)
 	}
 	else
 	{
+		// [cooViewer] nextheaderoffs is attacker-controlled; startoffset+32+nextheaderoffs can
+		// overflow off_t (signed integer overflow, UB). Reject a negative or overflowing offset
+		// — a valid header offset is well within the file, and the seek would fail anyway.
+		// Found by UBSan fuzzing. See MODERNIZATION.md.
+		if(nextheaderoffs<0 || nextheaderoffs>CSHandleMaxLength-32-startoffset) [XADException raiseIllegalDataException];
 		[handle seekToFileOffset:startoffset+32+nextheaderoffs];
 	}
 
