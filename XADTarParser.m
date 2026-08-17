@@ -258,7 +258,9 @@
 	}
 
 	// KLUDGE: Fix broken directory typeflags.
-	if( typeFlag == 0 && name[strlen(name)-1] == '/' ) {
+	// [cooViewer] an empty name makes strlen(name)-1 underflow to SIZE_MAX and read name[-1]
+	// (out-of-bounds stack read). Guard the trailing-slash check. Found by ASan fuzzing.
+	if( typeFlag == 0 && name[0] != '\0' && name[strlen(name)-1] == '/' ) {
 		[dict setObject:[NSNumber numberWithBool:YES] forKey:XADIsDirectoryKey];
 	}
 

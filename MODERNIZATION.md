@@ -84,6 +84,7 @@ unaffected (cooViewer's XCTest suite confirms no regression).
 | 16 | `CSInputBuffer.h` | hardening | Return the peeked byte as `uint32_t` from `_CSInputPeekByteWithoutEOF`, so the bit-buffer fills shift it in unsigned arithmetic; `byte<<24` computed in `int` overflowed a signed int for bytes ≥ 0x80 (UB). One-point fix for every fill site. | upstreamable |
 | 17 | `XADRAR5Parser.m` | hardening (DoS) | Guarantee forward progress in the RAR5 block loop: a crafted stream could make `skipBlock` seek to a non-advancing offset, re-reading the same block forever (infinite loop / hang). Require each block to start strictly after the previous one. | upstreamable |
 | 18 | `CSHandle.m` | hardening (DoS) | `remainingFileContents` appended `readAtMost:`'s count without a sign check; a negative count became a huge `NSUInteger` and an impossible allocation (ASan allocation-size-too-big). Only append positive reads. | upstreamable |
+| 19 | `XADTarParser.m` | security (CWE-125) | Guard the trailing-slash directory-typeflag check against an empty tar entry name; `name[strlen(name)-1]` underflowed to `name[-1]`, an out-of-bounds stack read (ASan stack-buffer-overflow). | upstreamable |
 
 ## Fuzzing
 
