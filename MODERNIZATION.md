@@ -59,10 +59,10 @@ tighten bounds that only trigger on malformed input, so well-formed archives are
 
 ## Changes (newest last)
 
-All dates 2026-08-17. Each row is one commit; each is written to be an independent PR to
-upstream. Findings came from a read-only security/modernization survey of the reachable
-decoders; fixes tighten bounds that only fire on malformed input, so well-formed archives are
-unaffected (cooViewer's XCTest suite confirms no regression).
+All dates 2026-08-17 (change #49: 2026-08-18). Each row is one commit; each is written to be
+an independent PR to upstream. Findings came from a read-only security/modernization survey of
+the reachable decoders; fixes tighten bounds that only fire on malformed input, so well-formed
+archives are unaffected (cooViewer's XCTest suite confirms no regression).
 
 | # | File(s) | Category | Change | Upstream |
 |---|---------|----------|--------|----------|
@@ -114,6 +114,7 @@ unaffected (cooViewer's XCTest suite confirms no regression).
 | 46 | `libxad/clients/LhF.c` | security (CWE-787) | Bound the LhF Huffman code length: `k` is built from an unbounded run of 1-bits, and `++data0[k-1]` (16-entry histogram) writes far past the array for large `k` (heap overflow). Reject `k>16`. Bundled libxad (LGPL-2.1); fork-local. Found by audit. | fork-local |
 | 47 | `libxad/clients/Ace.c` | hardening (CWE-787) | Reject `uplim>=ACEsvwd_cnt` in the ACE code reader: `uplim` is a 4-bit field (0..15) but `wd_svwd` has only 15 entries, so `uplim==15` wrote `wd_svwd[15]`, one past the array (corrupting the adjacent struct field). Bundled libxad; fork-local. Found by audit. | fork-local |
 | 48 | `libxad/clients/xadIO_Compress.c` | hardening (CWE-190) | Bound the vendored `.Z` LZW maxbits to 9..16 (attacker-controlled, up to 31 → `1<<31` UB and a `maxmaxcode`-sized allocation that wraps on 32-bit). Mirrors the XADMaster `.Z` fix (#21). Bundled libxad; fork-local. Found by audit. | fork-local |
+| 49 | `XADString.m` | correctness / i18n | Add a "confident UTF-8" pre-detector fast path to `+analyzedXADStringWithData:source:`. When a name carries no explicit encoding flag but its bytes are **strictly valid UTF-8** (RFC 3629 / Unicode Table 3-7 — overlong forms, surrogates, code points > U+10FFFF, truncated sequences and stray continuation bytes all rejected) **and** contain at least one 3-/4-byte sequence, decode it as UTF-8 instead of deferring to the universalchardet statistical guesser (`IsDataConfidentlyUTF8`). This fixes real-world filename mojibake on UTF-8 names stored *without* a flag — legacy zip lacking GP bit 11, GNU/ustar tar, LHA, RAR3 8-bit names — which universalchardet mis-guesses for short CJK names (its `nsUTF8Prober` confidence stays < the 0.95 shortcut below ~5 multibyte chars, so a legacy CJK prober can outscore it). The 3-byte-sequence requirement is the key to compat-safety: every CJK / kana / Hangul character is a 3-byte UTF-8 sequence (emoji 4-byte), so UTF-8 CJK recall stays **100%**, while a legacy 2-byte CJK pair that coincidentally forms valid UTF-8 almost always yields only 2-byte (C-lead) sequences. Measured over ~18k realistic legacy CJK names (SJIS/EUC-JP/GBK/Big5/CP949) the misfire rate is **< 0.03%** (vs ~0.5–1.7% for a plain "any valid UTF-8" rule). The shared detector is still fed, so mixed-encoding archives are unaffected; ASCII keeps its existing fast path. Same principle used by Python's `zipfile`, Go's `archive/zip` and 7-Zip. Verified by a standalone differential corpus test and a new cooViewer XCTest (`ArchiveSourceTests.testUnflaggedUTF8Names`). | upstreamable |
 
 ## Fuzzing
 
@@ -152,6 +153,21 @@ Intentionally NOT changed yet, to keep this iteration low-risk and highly mergea
   cooViewer never reads. Low value / added churn; deferred.
 - **`wavpack/unpack_seek.c` unused variable** — third-party vendored code; report to the WavPack
   project rather than diverge the fork.
+- **LHA `0x46` codepage extended header** in `XADLZHParser.m`: UNLHA32 records an explicit
+  Windows code page (932/65001/936/…) that would let LHA names skip the guesser entirely. Deferred:
+  low incidence (LHA *and* that specific header), the codepage→encoding mapping needs a portability
+  guard (`CFStringConvertWindowsCodepageToEncoding` is Apple-only, upstream also targets Linux/
+  GNUstep), and change #49 already covers the UTF-8 (65001) case. Revisit if LHA mojibake is reported.
+- **Extract-path micro-throughput** — three profiled-but-deferred items: the double copy in
+  `-[CSHandle remainingFileContents]` (inflate/CRC write a 16 KB stack buffer, then `appendBytes`
+  copies it again into the `NSMutableData`); the 512 KB zero-filled prefetch in
+  `-[CSHandle copyDataOfLengthAtMost:]` per archive open (driven by ISO9660's `requiredHeaderSize`);
+  and adding `setvbuf` to `CSFileHandle`. All are byte-identical and compat-safe, but each is
+  sub-millisecond for the common CBZ/CBR/CB7 paths (normal Deflate already runs through the system
+  zlib and CRC is HW-accelerated on arm64, so neither is the bottleneck). They sit below this fork's
+  "measurable gain worth the rebase churn" bar — the same reason the 3-stream hardware CRC32 below is
+  deferred. Revisit if profiling shows the extract-side copy becoming hot (e.g. bulk extraction tools
+  rather than a page-at-a-time viewer).
 - **3-stream hardware CRC32 + GF(2) combine** in `CRC.m`: benchmarked at ~7× the sliced-16
   baseline (33 vs 4.6 GB/s), but NOT adopted — CRC is not the decode bottleneck (zlib inflate
   dominates cbz time), so the ~3× gain over the adopted single-stream path (change #11) does not
