@@ -5,7 +5,7 @@
     Ace file archiver client
 
     XAD library system for archive handling
-    Copyright (C) 1998 and later by Dirk Stöcker <soft@dstoecker.de>
+    Copyright (C) 1998 and later by Dirk Stï¿½cker <soft@dstoecker.de>
 
     This library is free software; you can redistribute it and/or
     modify it under the terms of the GNU Lesser General Public
@@ -321,6 +321,12 @@ static xadINT32 ACEread_wd(struct AceData *ad, xadUINT32 maxwd, xadUINT16 *code,
   ACEaddbits(ad, 4);
   uplim = ad->code_rd >> (32 - 4);
   ACEaddbits(ad, 4);
+
+  /* [cooViewer] 2026: uplim is a 4-bit field (0..15) but wd_svwd has only ACEsvwd_cnt (15)
+     entries, so uplim==15 writes wd_svwd[15], one past the array (corrupting the adjacent
+     struct field). Reject, matching the makecode error path below. Found by a memory-safety audit. */
+  if(uplim >= ACEsvwd_cnt)
+    return 0;
 
   for(i = -1; ++i <= uplim;)
   {

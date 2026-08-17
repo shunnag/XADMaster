@@ -5,7 +5,7 @@
     UNIX Compress
 
     XAD library system for archive handling
-    Copyright (C) 1998 and later by Dirk Stöcker <soft@dstoecker.de>
+    Copyright (C) 1998 and later by Dirk Stï¿½cker <soft@dstoecker.de>
 
     This library is free software; you can redistribute it and/or
     modify it under the terms of the GNU Lesser General Public
@@ -123,6 +123,12 @@ static xadINT32 xadIO_Compress(struct xadInOut *io, xadUINT8 bitinfo)
   struct xadMasterBase *xadMasterBase = io->xio_xadMasterBase;
 
   if((bitinfo & UCOMPBIT_MASK) < UCOMPINIT_BITS)
+    return XADERR_ILLEGALDATA;
+
+  /* [cooViewer] 2026: bound the .Z maxbits (attacker-controlled, up to 0x1f) to its valid 9..16
+     range before `1<<maxbits` and the maxmaxcode-sized allocations; 31 makes 1<<31 UB and 17..30
+     requests a multi-GB table (a size_t wrap on 32-bit). Mirrors the XADMaster .Z fix. Audit. */
+  if((bitinfo & UCOMPBIT_MASK) > 16)
     return XADERR_ILLEGALDATA;
 
   if((cd = (struct UCompData *) xadAllocVec(XADM sizeof(struct UCompData),

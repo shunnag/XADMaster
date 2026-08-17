@@ -5,7 +5,7 @@
     LhF file archiver client
 
     XAD library system for archive handling
-    Copyright (C) 1998 and later by Dirk Stöcker <soft@dstoecker.de>
+    Copyright (C) 1998 and later by Dirk Stï¿½cker <soft@dstoecker.de>
 
     This library is free software; you can redistribute it and/or
     modify it under the terms of the GNU Lesser General Public
@@ -361,6 +361,11 @@ static xadINT32 LHFsub2(struct LhFDecrunch *lhd, xadINT16 bits, xadINT16 maxbits
       } while(k);
       k = j;
     }
+    /* [cooViewer] 2026: k is a Huffman code length built from an unbounded run of 1-bits; data0
+       has only 16 entries, so ++data0[k-1] for an unbounded k writes far past it (heap overflow).
+       A valid code length is at most 16. Found by a memory-safety audit. */
+    if(k > 16)
+      return XADERR_ILLEGALDATA;
     *d = k;
     if(*(d++) > 0)
       ++lhd->data0[k-1];
