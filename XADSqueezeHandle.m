@@ -69,7 +69,11 @@ static void BuildCodeFromTree(XADPrefixCode *code,int *tree,int node,int numnode
 -(void)resetByteStream
 {
 	int numnodes=CSInputNextUInt16LE(input)*2;
-	if(numnodes>=257*2) [XADException raiseDecrunchException];
+	// [cooViewer] numnodes is attacker-controlled and only had an upper bound; numnodes<2 makes
+	// `int nodes[numnodes]` a zero-length VLA (undefined behavior) and the nodes[0]/nodes[1]
+	// writes below overflow the stack buffer. Require at least the root pair. A valid Squeeze
+	// tree always has >=2 nodes. Found by AddressSanitizer fuzzing. See MODERNIZATION.md.
+	if(numnodes<2||numnodes>=257*2) [XADException raiseDecrunchException];
 
 	int nodes[numnodes];
 	nodes[0]=nodes[1]=-(256+1);
