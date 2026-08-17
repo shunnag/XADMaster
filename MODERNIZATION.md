@@ -80,16 +80,24 @@ unaffected (cooViewer's XCTest suite confirms no regression).
 | 12 | `Scanning.m` | security / correctness | Use `memmove` instead of `memcpy` for the archive-scan carry-over window shift; source and destination overlap when `actual < 2*maximumlength-2`, so the `memcpy` was undefined behavior. Found by AddressSanitizer fuzzing of the open+extract path. | upstreamable |
 | 13 | `XADRAR5Parser.m` | hardening | Bound two attacker-controlled shifts flagged by UBSan fuzzing: the RAR5 varint reader (`res \|= bits << pos`) no longer shifts a `uint64` by `>=64` (accumulates only the low 64 bits, keeps the stream in sync); and the RAR5 KDF count exponent is rejected outside `[0,24]` (`1<<strength` was UB for `strength>=31` and a `2^strength`-iteration DoS). | upstreamable |
 | 14 | `XADZipCryptHandle.m` | hardening | Compute the PKZIP decrypt key-stream product in unsigned arithmetic; `temp*(temp^1)` promoted to `int` and overflowed (signed-overflow UB, found by UBSan fuzzing). | upstreamable |
+| 15 | `XADSqueezeHandle.m` | security (CWE-787) | Reject `numnodes<2` in the Squeeze/SQ decoder. `numnodes` is attacker-controlled and only had an upper bound; `numnodes==0` makes `int nodes[numnodes]` a zero-length VLA and the `nodes[0]=nodes[1]=…` writes overflow the stack (ASan dynamic-stack-buffer-overflow). A valid Squeeze tree always has ≥2 nodes. | upstreamable |
+| 16 | `CSInputBuffer.h` | hardening | Return the peeked byte as `uint32_t` from `_CSInputPeekByteWithoutEOF`, so the bit-buffer fills shift it in unsigned arithmetic; `byte<<24` computed in `int` overflowed a signed int for bytes ≥ 0x80 (UB). One-point fix for every fill site. | upstreamable |
+| 17 | `XADRAR5Parser.m` | hardening (DoS) | Guarantee forward progress in the RAR5 block loop: a crafted stream could make `skipBlock` seek to a non-advancing offset, re-reading the same block forever (infinite loop / hang). Require each block to start strictly after the previous one. | upstreamable |
+| 18 | `CSHandle.m` | hardening (DoS) | `remainingFileContents` appended `readAtMost:`'s count without a sign check; a negative count became a huge `NSUInteger` and an impossible allocation (ASan allocation-size-too-big). Only append positive reads. | upstreamable |
 
 ## Fuzzing
 
-Changes 12–14 came from an AddressSanitizer + UndefinedBehaviorSanitizer campaign: the framework is
-built with `-fsanitize=address,undefined` and a small harness drives `XADArchive initWithData:`
-(format detect → parse → per-entry decompress) on mutated seed archives (zip/gzip/bzip2/StuffIt/
-WARC + crafted RAR/7z magic). No memory-corruption (ASan) defects remain after change 12; the
-UBSan findings above are bounded. UBSan also flags benign enum-range loads inside the vendored
-`UniversalDetector` (Mozilla `universalchardet`) — those are tracked in that library's own fork,
-not here.
+Changes 12–18 came from an AddressSanitizer + UndefinedBehaviorSanitizer campaign: the framework is
+built with `-fsanitize=address,undefined` and a harness drives `XADArchive initWithData:` (format
+detect → parse → per-entry decompress) on mutated seed archives (zip/gzip/bzip2/StuffIt/WARC +
+crafted RAR/7z magic), with a per-input watchdog that catches decode hangs. It found and fixed a
+real stack-buffer overflow (Squeeze), two denial-of-service conditions (a RAR5 parse hang and a
+negative-length huge allocation), and several undefined-behavior sites (overlapping `memcpy`,
+out-of-range shifts, signed overflow). After these fixes the open+extract path runs clean under
+ASan across long fuzzing runs. Fuzzing is nondeterministic — longer runs against a mature parser
+may still surface deeper edge cases; this harness lives in the cooViewer scratch tree for reuse.
+UBSan also flags benign enum-range loads inside the vendored `UniversalDetector` (Mozilla
+`universalchardet`); those are fixed in that library's own fork, not here.
 
 ## Deferred (candidates for a future iteration)
 
