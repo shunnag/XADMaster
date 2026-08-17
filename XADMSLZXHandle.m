@@ -280,7 +280,8 @@
 		while(i<count)
 		{
 			int val=CSInputNextSymbolUsingCode(input,precode);
-			int n,length;
+			int n=0,length=0; // [cooViewer] init: the else-raise below covers val>19, but clang
+			// does not know raiseDecrunchException is noreturn (-Wsometimes-uninitialized).
 
 			if(val<=16)
 			{
@@ -303,7 +304,12 @@
 				int newval=CSInputNextSymbolUsingCode(input,precode);
 				length=(lengths[i]+17-newval)%17;
 			}
+			// [cooViewer] reject val>19 (defensive; also silences -Wsometimes-uninitialized on
+			// n/length) and bound the write to `count` — XADLZXHandle already has this guard but
+			// this sibling was missing it, allowing an OOB write. See MODERNIZATION.md.
+			else [XADException raiseDecrunchException];
 
+			if(i+n>count) [XADException raiseDecrunchException];
 			for(int j=0;j<n;j++) lengths[i+j]=length;
 			i+=n;
 		}
