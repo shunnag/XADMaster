@@ -20,6 +20,7 @@
  */
 #import "Checksums.h"
 #import "Crypto/brg_endian.h"
+#import "CRC.h" // [cooViewer] for XADCRCTable_sliced16_edb88320 (hardware CRC32 fast path)
 
 uint32_t XADCRC(uint32_t prevcrc,uint8_t byte,const uint32_t *table)
 {
@@ -47,8 +48,33 @@ static inline uint32_t swap(uint32_t x)
 }
 #endif
 
+#if defined(__ARM_FEATURE_CRC32)
+#include <arm_acle.h>
+#include <string.h>
+
+// [cooViewer] Single-stream ARMv8 hardware CRC32 for the reflected edb88320 polynomial (the
+// poly of this file's CRC tables). Byte-identical to the table implementation — validated by
+// CRCCalculationTests and offline differential fuzzing (20k random cases) — at ~2.3x the
+// sliced-16 throughput on Apple Silicon (10.6 vs 4.6 GB/s). Used only for the edb88320
+// sliced-16 table (see XADCalculateCRCFast). A 3-stream + GF(2)-combine variant measured ~7x
+// but was NOT adopted: CRC is not the decode bottleneck (zlib inflate dominates), so the extra
+// combine-table complexity is not justified. See MODERNIZATION.md.
+static uint32_t XADCalculateCRC32HW_edb88320(uint32_t crc,const uint8_t *buffer,int length)
+{
+	while(length>=8) { uint64_t v; memcpy(&v,buffer,8); crc=__crc32d(crc,v); buffer+=8; length-=8; }
+	if(length>=4) { uint32_t v; memcpy(&v,buffer,4); crc=__crc32w(crc,v); buffer+=4; length-=4; }
+	if(length>=2) { uint16_t v; memcpy(&v,buffer,2); crc=__crc32h(crc,v); buffer+=2; length-=2; }
+	if(length>0) crc=__crc32b(crc,*buffer);
+	return crc;
+}
+#endif
+
 uint32_t XADCalculateCRCFast(uint32_t prevcrc,const uint8_t *buffer,int length, const uint32_t (*table)[256])
 {
+#if defined(__ARM_FEATURE_CRC32)
+	// [cooViewer] hardware CRC32 for the edb88320 poly — the only table used with this function.
+	if(table==XADCRCTable_sliced16_edb88320) return XADCalculateCRC32HW_edb88320(prevcrc,buffer,length);
+#endif
     uint32_t crc = prevcrc;
     const uint32_t* pos = (const uint32_t*) buffer;
     
