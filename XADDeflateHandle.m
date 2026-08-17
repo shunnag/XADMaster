@@ -92,11 +92,15 @@
 			int size=(literal-261)/4;
 			*length=baselengths[literal-265]+CSInputNextBitStringLE(input,size);
 		}
-		else // literal==285
+		// [cooViewer] a Deflate64 dynamic table may assign codes to the reserved literals
+		// 286/287; they are not valid lengths. Handle only 285 as the max-length symbol and
+		// reject the rest (as zlib does) rather than silently mis-decoding. See MODERNIZATION.md.
+		else if(literal==285)
 		{
 			if(variant==XADDeflate64DeflateVariant) *length=3+CSInputNextBitStringLE(input,16);
 			else *length=258;
 		}
+		else [XADException raiseDecrunchException];
 
 		int distance=CSInputNextSymbolUsingCodeLE(input,distancecode);
 
@@ -105,6 +109,9 @@
 		{
 			static const int baseoffsets[]={5,7,9,13,17,25,33,49,65,97,129,193,257,
 			385,513,769,1025,1537,2049,3073,4097,6145,8193,12289,16385,24577,32769,49153};
+			// [cooViewer] baseoffsets has 28 entries (distance 4..31); the StuffItX variant reads
+			// a 6-bit distance symbol which can be >=32, an out-of-bounds read. Reject it.
+			if(distance>=32) [XADException raiseDecrunchException];
 			int size=(distance-2)/2;
 			*offset=baseoffsets[distance-4]+CSInputNextBitStringLE(input,size);
 		}
