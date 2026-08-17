@@ -93,20 +93,26 @@ static const int MetaCodeLengths[37];
 			case 31: length=-1; break;
 			case 32: length++; break;
 			case 33: length--; break;
+			// [cooViewer] the run/extra writes below advance i past the loop's i<numcodes head
+			// test, overflowing the int lengths[numcodes] stack VLA (numcodes can be as small
+			// as 10 for the offset code, while a case-36 run writes up to 73). Bound every write
+			// to numcodes — the stream bit/bit-string reads still run, so the stream stays in
+			// sync; a well-formed code table never exceeds numcodes entries. Found by ASan-style
+			// audit; mirrors the guard in XADLZHStaticHandle.
 			case 34:
-				if(CSInputNextBitLE(input)) lengths[i++]=length;
+				if(CSInputNextBitLE(input) && i<numcodes) lengths[i++]=length;
 			break;
 			case 35:
 				val=CSInputNextBitStringLE(input,3)+2;
-				while(val--) lengths[i++]=length;
+				while(val-- && i<numcodes) lengths[i++]=length;
 			break;
 			case 36:
 				val=CSInputNextBitStringLE(input,6)+10;
-				while(val--) lengths[i++]=length;
+				while(val-- && i<numcodes) lengths[i++]=length;
 			break;
 			default: length=val+1; break;
 		}
-		lengths[i]=length;
+		if(i<numcodes) lengths[i]=length;
 	}
 
 	return [[XADPrefixCode alloc] initWithLengths:lengths numberOfSymbols:numcodes maximumLength:32 shortestCodeIsZeros:YES];

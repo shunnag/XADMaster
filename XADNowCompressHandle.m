@@ -502,7 +502,13 @@ static XADPrefixCode *AllocAndReadCode(uint8_t *sourcestart,uint8_t *sourceend,i
 	for(int i=0;i<extralengths;i++)
 	{
 		if(source>=sourceend) [XADException raiseDecrunchException];
-		lengths[*source++]+=16;
+		// [cooViewer] the source byte is used directly as an index into lengths[numentries];
+		// for the 20-entry header code an index up to 255 writes far past the stack VLA. Reject
+		// an out-of-range index (a scatter index cannot be clamped). The 256-entry callers are
+		// unaffected (0..255 < 256). Found by memory-safety audit.
+		uint8_t index=*source++;
+		if(index>=numentries) [XADException raiseDecrunchException];
+		lengths[index]+=16;
 	}
 
 	if(newsource) *newsource=source;

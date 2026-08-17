@@ -192,7 +192,10 @@ static void SIT14_ReadTree(struct SIT14Data *dat, xadUINT16 codesize, xadUINT16 
             n = size<<1;
           } while(n > l);
           l += 3-n;
-          while(l--)
+          // [cooViewer] bound the run-copy to codesize: a crafted tree makes l large and pushes
+          // i past dat->code[] into the adjacent struct fields. Stop at codesize (a valid tree
+          // fills exactly codesize entries). Found by memory-safety audit.
+          while(l-- && i<codesize)
           {
             dat->code[i] = dat->code[i-1];
             ++i;
@@ -215,7 +218,10 @@ static void SIT14_ReadTree(struct SIT14Data *dat, xadUINT16 codesize, xadUINT16 
         if(l == m)
         {
           l = xadIOGetBitsLow(dat->io, j)+3;
-          while(l--)
+          // [cooViewer] bound the run-copy to codesize: a crafted tree makes l large and pushes
+          // i past dat->code[] into the adjacent struct fields. Stop at codesize (a valid tree
+          // fills exactly codesize entries). Found by memory-safety audit.
+          while(l-- && i<codesize)
           {
             dat->code[i] = dat->code[i-1];
             ++i;
