@@ -581,7 +581,9 @@
 			[stack removeAllObjects];
 		}
 
-		if(num>numcodes||num<0||num>1024) [XADException raiseIllegalDataException];
+		// [cooViewer] oldfilterlength/usagecount are [1024] (indices 0..1023), so num==1024
+		// is one past the end; reject it too. See MODERNIZATION.md.
+		if(num>numcodes||num<0||num>=1024) [XADException raiseIllegalDataException];
 		if(num==numcodes)
 		{
 			isnew=YES;
@@ -643,7 +645,9 @@
 	{
 		int length=CSInputNextRARVMNumber(filterinput);
 
-		if(length>RARProgramUserGlobalSize) [XADException raiseIllegalDataException];
+		// [cooViewer] a negative (high-bit-set uint32) length passed this check and became a
+		// huge NSUInteger allocation; reject it, matching the bytecode-length guard above.
+		if(length<0||length>RARProgramUserGlobalSize) [XADException raiseIllegalDataException];
 
 		data=[NSMutableData dataWithLength:length+RARProgramSystemGlobalSize];
 		uint8_t *databytes=[data mutableBytes];
