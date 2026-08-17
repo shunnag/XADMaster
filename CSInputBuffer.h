@@ -96,7 +96,10 @@ static inline void CSInputSkipBytes(CSInputBuffer *self,int num)
 	self->currbyte+=num;
 }
 
-static inline int _CSInputPeekByteWithoutEOF(CSInputBuffer *self,int offs)
+// [cooViewer] Return the byte as uint32_t (it is always 0..255) so the bit-buffer fills below
+// shift it in unsigned arithmetic. `byte << 24` computed in `int` overflowed a signed int for
+// bytes >= 0x80 (undefined behavior, found by UBSan fuzzing). See MODERNIZATION.md.
+static inline uint32_t _CSInputPeekByteWithoutEOF(CSInputBuffer *self,int offs)
 {
 	return self->buffer[self->currbyte+offs];
 }
