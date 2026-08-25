@@ -1423,6 +1423,7 @@
 		73DA346A206B6BF1006ADB42 /* XADMaster.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8DC2EF5B0486A6940098B216 /* XADMaster.framework */; };
 		73F0AA6402D14A5300A1B2C3 /* EndianConversionTests.m in Sources */ = {isa = PBXBuildFile; fileRef = 73F0AA6302D14A5300A1B2C3 /* EndianConversionTests.m */; };
 		BA5204602FCDDC450041EA37 /* XADStuffItXIronHandleTests.m in Sources */ = {isa = PBXBuildFile; fileRef = BA52045F2FCDDC450041EA37 /* XADStuffItXIronHandleTests.m */; };
+		C0DE192A000000000000F12E /* XADPathTests.m in Sources */ = {isa = PBXBuildFile; fileRef = C0DE192A000000000000F11E /* XADPathTests.m */; };
 		C4C3241827AC25E9007919DB /* XADZippedBzip2LeakTests.m in Sources */ = {isa = PBXBuildFile; fileRef = C4C3241727AC25E9007919DB /* XADZippedBzip2LeakTests.m */; };
 		C4C3241A27AC2655007919DB /* eicar.bz in Resources */ = {isa = PBXBuildFile; fileRef = C4C3241927AC2655007919DB /* eicar.bz */; };
 		DF05DCF92806F104001E9C52 /* XADMaster.h in Headers */ = {isa = PBXBuildFile; fileRef = DF05DCF52806EF40001E9C52 /* XADMaster.h */; settings = {ATTRIBUTES = (Public, ); }; };
@@ -2156,6 +2157,7 @@
 		73F0AA6302D14A5300A1B2C3 /* EndianConversionTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = EndianConversionTests.m; sourceTree = "<group>"; };
 		8DC2EF5B0486A6940098B216 /* XADMaster.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = XADMaster.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		BA52045F2FCDDC450041EA37 /* XADStuffItXIronHandleTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = XADStuffItXIronHandleTests.m; sourceTree = "<group>"; };
+		C0DE192A000000000000F11E /* XADPathTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = XADPathTests.m; sourceTree = "<group>"; };
 		C4C3241727AC25E9007919DB /* XADZippedBzip2LeakTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = XADZippedBzip2LeakTests.m; sourceTree = "<group>"; };
 		C4C3241927AC2655007919DB /* eicar.bz */ = {isa = PBXFileReference; lastKnownFileType = file; path = eicar.bz; sourceTree = "<group>"; };
 		DF05DCF52806EF40001E9C52 /* XADMaster.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = XADMaster.h; sourceTree = "<group>"; };
@@ -3288,6 +3290,7 @@
 				7378D98A21CCD04000A4B11F /* CRCCalculationTests.m */,
 				73F0AA6302D14A5300A1B2C3 /* EndianConversionTests.m */,
 				73B1C2002B4A100100ABCDEF /* XADRegexTests.m */,
+				C0DE192A000000000000F11E /* XADPathTests.m */,
 				E46E6295225DC2DE00D44E0A /* XADSFXDetectionParserTests.m */,
 				C4C3241727AC25E9007919DB /* XADZippedBzip2LeakTests.m */,
 				C4C3241927AC2655007919DB /* eicar.bz */,
@@ -4793,6 +4796,7 @@
 				73032E6C2626D3DD000C2751 /* XADWARCParserTests.m in Sources */,
 				73DA3468206B6BF1006ADB42 /* XADPlatformOSXTests.m in Sources */,
 				C4C3241827AC25E9007919DB /* XADZippedBzip2LeakTests.m in Sources */,
+				C0DE192A000000000000F12E /* XADPathTests.m in Sources */,
 				7318A41D248C67E400D327B9 /* XADRARParserTests.m in Sources */,
 				1737C872BD5877C5DFDA3D99 /* XADRAR5ParserTests.m in Sources */,
 				E424FB4E21CAEC0300E1C950 /* XADZipParserTests.m in Sources */,

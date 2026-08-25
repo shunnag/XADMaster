@@ -286,8 +286,11 @@ separators:(const char *)pathseparators
 	[self _addPathComponentsToArray:components encodingName:encoding];
 
 	// If there are no . or .. components, there is no need to do any further work.
-	if([components indexOfObject:@"."]!=NSNotFound&&
-	[components indexOfObject:@".."]!=NSNotFound) return components;
+	// [cooViewer] the check was inverted (!=NSNotFound), so a path containing both
+	// . and .. — exactly the case needing normalization — was returned raw
+	// (upstream issue #192).
+	if([components indexOfObject:@"."]==NSNotFound&&
+	[components indexOfObject:@".."]==NSNotFound) return components;
 
 	// Drop . anywhere in the path
 	for(int i=0;i<[components count];)
