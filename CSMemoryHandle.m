@@ -137,6 +137,12 @@
 	else return [super remainingFileContents];
 }
 
+// [cooViewer] The zero-copy shortcut above beats any preallocation; ignore the hint.
+-(NSData *)remainingFileContentsWithSizeHint:(off_t)hint
+{
+	return [self remainingFileContents];
+}
+
 -(NSData *)readDataOfLength:(int)length
 {
 	unsigned long totallen=[backingdata length];

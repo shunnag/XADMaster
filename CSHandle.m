@@ -290,6 +290,60 @@ CSReadValueImpl(uint32_t,readID,CSUInt32BE)
 	return data;
 }
 
+// [cooViewer] Preallocated single-buffer variant of remainingFileContents for callers that
+// know the expected stream length (e.g. XADArchive contentsOfEntry: via XADFileSizeKey).
+// Avoids the 16 KB bounce buffer, the NSMutableData growth reallocs, and — because the
+// result is an immutable malloc-backed NSData — the full-byte copy that bridging an
+// NSMutableData into Swift's Data would otherwise perform. The hint is untrusted metadata:
+// a lying-small hint falls back to append-style growth for the tail, a lying-large hint
+// only costs the shrink realloc, and absurd hints (<=0 or >=1 GB) use the classic path.
+// The stream is always drained to EOF so checksum-wrapping parents see every byte, keeping
+// -isChecksumCorrect semantics identical to remainingFileContents.
+-(NSData *)remainingFileContentsWithSizeHint:(off_t)hint
+{
+	if(hint<=0||hint>=0x40000000) return [self remainingFileContents];
+
+	size_t capacity=(size_t)hint;
+	uint8_t *buf=malloc(capacity);
+	if(!buf) return [self remainingFileContents];
+
+	size_t total=0;
+	while(total<capacity)
+	{
+		size_t want=capacity-total;
+		if(want>0x10000000) want=0x10000000;
+		int actual=[self readAtMost:(int)want toBuffer:buf+total];
+		if(actual<=0) break;
+		total+=(size_t)actual;
+	}
+
+	if(total==capacity)
+	{
+		// The hint may undershoot the real stream length; keep draining through the
+		// same handle chain so the tail is both captured and checksummed.
+		uint8_t extra[16384];
+		int actual=[self readAtMost:sizeof(extra) toBuffer:extra];
+		if(actual>0)
+		{
+			NSMutableData *data=[NSMutableData dataWithBytesNoCopy:buf length:total freeWhenDone:YES];
+			do
+			{
+				[data appendBytes:extra length:actual];
+				actual=[self readAtMost:sizeof(extra) toBuffer:extra];
+			}
+			while(actual>0);
+			return data;
+		}
+	}
+	else if(total<capacity)
+	{
+		uint8_t *shrunk=realloc(buf,total?total:1);
+		if(shrunk) buf=shrunk;
+	}
+
+	return [NSData dataWithBytesNoCopy:buf length:total freeWhenDone:YES];
+}
+
 -(NSData *)readDataOfLength:(int)length
 {
 	return [[self copyDataOfLength:length] autorelease];

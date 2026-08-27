@@ -114,6 +114,7 @@ extern NSString *CSNotSupportedException;
 
 -(NSData *)fileContents;
 -(NSData *)remainingFileContents;
+-(NSData *)remainingFileContentsWithSizeHint:(off_t)hint;
 -(NSData *)readDataOfLength:(int)length;
 -(NSData *)readDataOfLengthAtMost:(int)length;
 -(NSData *)copyDataOfLength:(int)length;

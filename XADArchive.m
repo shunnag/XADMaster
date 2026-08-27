@@ -734,7 +734,13 @@ NSString *XADFinderFlags=@"XADFinderFlags";
 	{
 		CSHandle *handle=[parser handleForEntryWithDictionary:dict wantChecksum:YES];
 		if(!handle) [XADException raiseDecrunchException];
-		NSData *data=[handle remainingFileContents];
+		// [cooViewer] Use the declared uncompressed size as a preallocation hint: one malloc,
+		// no growth copies, and an immutable result that bridges into Swift without a copy.
+		// The hint is advisory only — see remainingFileContentsWithSizeHint:.
+		NSNumber *sizenum=[dict objectForKey:XADFileSizeKey];
+		NSData *data=sizenum?
+			[handle remainingFileContentsWithSizeHint:[sizenum longLongValue]]:
+			[handle remainingFileContents];
 		if([handle hasChecksum]&&![handle isChecksumCorrect]) [XADException raiseChecksumException];
 
 		return data;
