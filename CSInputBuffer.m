@@ -31,6 +31,7 @@ CSInputBuffer *CSInputBufferAlloc(CSHandle *parent,int size)
 
 	self->parent=[parent retain];
 	self->startoffs=[parent offsetInFile];
+	self->parentoffs=self->startoffs;
 	self->eof=NO;
 
 	self->buffer=(uint8_t *)&self[1];
@@ -50,6 +51,7 @@ CSInputBuffer *CSInputBufferAllocWithBuffer(const uint8_t *buffer,int length,off
 
 	self->parent=NULL;
 	self->startoffs=-startoffs;
+	self->parentoffs=0;
 	self->eof=YES;
 
 	self->buffer=(uint8_t *)buffer; // Since eof is set, the buffer won't be written to.
@@ -69,6 +71,7 @@ CSInputBuffer *CSInputBufferAllocEmpty()
 
 	self->parent=NULL;
 	self->startoffs=0;
+	self->parentoffs=0;
 	self->eof=YES;
 
 	self->buffer=NULL;
@@ -125,6 +128,7 @@ void CSInputSynchronizeFileOffset(CSInputBuffer *self)
 void CSInputSeekToFileOffset(CSInputBuffer *self,off_t offset)
 {
 	[self->parent seekToFileOffset:offset];
+	self->parentoffs=offset;
 	self->eof=NO;
 	CSInputFlush(self);
 }
@@ -146,7 +150,7 @@ off_t CSInputBufferOffset(CSInputBuffer *self)
 
 off_t CSInputFileOffset(CSInputBuffer *self)
 {
-	if(self->parent) return [self->parent offsetInFile]-self->bufbytes+self->currbyte;
+	if(self->parent) return self->parentoffs-self->bufbytes+self->currbyte;
 	else return self->currbyte;
 }
 
@@ -174,6 +178,8 @@ void _CSInputFillBuffer(CSInputBuffer *self)
 	int actual=[self->parent readAtMost:self->bufsize-left toBuffer:self->buffer+left];
 	if(actual==0) self->eof=YES;
 
+	// 生きたハンドルから取り直す(フィルごとに 1 回 = 償却ゼロ。キャッシュの自己修復点)
+	self->parentoffs=[self->parent offsetInFile];
 	self->bufbytes=left+actual;
 	self->currbyte=0;
 }

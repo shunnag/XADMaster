@@ -25,6 +25,12 @@ typedef struct CSInputBuffer
 {
 	CSHandle *parent;
 	off_t startoffs;
+	// [cooViewer] Cached [parent offsetInFile]. RAR5 queries the bit offset once per
+	// decoded symbol (XADRAR50Handle block-boundary check), which used to cost one
+	// objc_msgSend per symbol through CSInputFileOffset. The parent only moves via
+	// _CSInputFillBuffer and CSInputSeekToFileOffset, which both refresh this; the
+	// fill refreshes from the live handle, so the cache self-heals every buffer.
+	off_t parentoffs;
 	BOOL eof;
 
 	uint8_t *buffer;
