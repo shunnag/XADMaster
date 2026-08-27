@@ -842,7 +842,9 @@ packedStreams:(NSArray *)packedstreams packedStreamIndex:(int *)packedstreaminde
 		//case 0x04030300: return @"RAR v2.9";
 		//case 0x04040100: return @"ARJ";
 		//case 0x04040200: return @"ARJ v4";
-		case 0x04050000: [[[XADCompressHandle alloc] initWithHandle:inhandle length:size flags:((uint8_t *)[props bytes])[0]] autorelease];
+		// [cooViewer] was missing its return: the handle was built, discarded, and control
+		// fell through into the 7zAES case below, breaking 7z+Compress(.Z) entries.
+		case 0x04050000: return [[[XADCompressHandle alloc] initWithHandle:inhandle length:size flags:((uint8_t *)[props bytes])[0]] autorelease];
 		//case 0x04060000: return @"Lzh";
 		//case 0x04080000: return @"Cab";
 		//case 0x04090100: return @"DeflateNSIS";
