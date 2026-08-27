@@ -849,12 +849,40 @@ packedStreams:(NSArray *)packedstreams packedStreamIndex:(int *)packedstreaminde
 		//case 0x04090200: return @"Bzip2NSIS";
 		case 0x06f10701:
 		{
-			// TODO: Cache keys.
 			int logrounds=[XAD7ZipAESHandle logRoundsForPropertyData:props];
 			NSData *salt=[XAD7ZipAESHandle saltForPropertyData:props];
 			NSData *iv=[XAD7ZipAESHandle IVForPropertyData:props];
 			if(logrounds<0||!salt||!iv) return nil;
-			NSData *key=[XAD7ZipAESHandle keyForPassword:[self password] salt:salt logRounds:logrounds];
+			// [cooViewer] Cache derived keys (resolves the long-standing TODO above). The
+			// 2^logrounds (typically 2^19) SHA-256 derivation costs ~28 ms per call on
+			// M4 Max and used to run once per entry handle — every page of a non-solid
+			// encrypted archive paid it again for the same (password, salt, rounds)
+			// triple. The cache is process-global (parsers are recreated per open) and
+			// locked because callers may run on different threads. Derived keys live as
+			// long as the process, like the passwords they come from.
+			static NSMutableDictionary *keycache=nil;
+			static NSLock *keycachelock=nil;
+			static dispatch_once_t keycacheonce;
+			dispatch_once(&keycacheonce,^{
+				keycache=[NSMutableDictionary new];
+				keycachelock=[NSLock new];
+			});
+			NSString *password=[self password];
+			NSArray *cachekey=[NSArray arrayWithObjects:
+				password?password:@"",salt,[NSNumber numberWithInt:logrounds],nil];
+			[keycachelock lock];
+			NSData *key=[[[keycache objectForKey:cachekey] retain] autorelease];
+			[keycachelock unlock];
+			if(!key)
+			{
+				key=[XAD7ZipAESHandle keyForPassword:password salt:salt logRounds:logrounds];
+				if(key)
+				{
+					[keycachelock lock];
+					[keycache setObject:key forKey:cachekey];
+					[keycachelock unlock];
+				}
+			}
 			return [[[XAD7ZipAESHandle alloc] initWithHandle:inhandle length:size key:key IV:iv] autorelease];
 		}
 		case 0x21000000: return [[[XADLZMA2Handle alloc] initWithHandle:inhandle length:size propertyData:props] autorelease];

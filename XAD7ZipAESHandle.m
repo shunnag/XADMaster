@@ -22,6 +22,11 @@
 #import "XAD7ZipAESHandle.h"
 
 #import "Crypto/sha.h"
+#import "XADException.h"
+
+#ifdef __APPLE__
+#import <CommonCrypto/CommonDigest.h>
+#endif
 
 @implementation XAD7ZipAESHandle
 
@@ -113,10 +118,49 @@
 	}
 	else
 	{
+		uint64_t numrounds=1LL<<logrounds;
+
+#ifdef __APPLE__
+		// [cooViewer] Hardware SHA-256 via CommonCrypto, fed in batches: the stream is
+		// numrounds repetitions of (salt|password|64-bit round counter), so records are
+		// pre-filled into a scratch buffer and only the counter bytes are patched per
+		// round. Batching keeps the per-call overhead negligible; the digest is
+		// bit-identical to the reference loop below (same byte stream).
+		CC_SHA256_CTX sha;
+		CC_SHA256_Init(&sha);
+
+		int recordlength=saltlength+passlength+8;
+		int batchrecords=16384/recordlength+1;
+		uint8_t *batch=malloc((size_t)batchrecords*recordlength);
+		if(!batch) [XADException raiseOutOfMemoryException];
+		for(int r=0;r<batchrecords;r++)
+		{
+			memcpy(&batch[(size_t)r*recordlength],saltbytes,saltlength);
+			memcpy(&batch[(size_t)r*recordlength+saltlength],passbytes,passlength);
+		}
+
+		uint64_t done=0;
+		while(done<numrounds)
+		{
+			int n=numrounds-done>(uint64_t)batchrecords?batchrecords:(int)(numrounds-done);
+			for(int r=0;r<n;r++)
+			{
+				uint64_t i=done+r;
+				uint8_t *counter=&batch[(size_t)r*recordlength+saltlength+passlength];
+				counter[0]=i&0xff; counter[1]=(i>>8)&0xff;
+				counter[2]=(i>>16)&0xff; counter[3]=(i>>24)&0xff;
+				counter[4]=(i>>32)&0xff; counter[5]=(i>>40)&0xff;
+				counter[6]=(i>>48)&0xff; counter[7]=(i>>56)&0xff;
+			}
+			CC_SHA256_Update(&sha,batch,(CC_LONG)((size_t)n*recordlength));
+			done+=n;
+		}
+
+		CC_SHA256_Final(key,&sha);
+		free(batch);
+#else
 		SHA_CTX sha;
 		SHA256_Init(&sha);
-
-		uint64_t numrounds=1LL<<logrounds;
 
 		for(uint64_t i=0;i<numrounds;i++)
 		{
@@ -129,6 +173,7 @@
 		}
 
 		SHA256_Final(key,&sha);
+#endif
 	}
 
 	return [NSData dataWithBytes:key length:sizeof(key)];
@@ -146,17 +191,37 @@
 		memcpy(iv,ivbytes,ivlength);
 
 		const uint8_t *keybytes=[keydata bytes];
+#ifdef __APPLE__
+		// [cooViewer] Hardware AES via CommonCrypto: same AES-256-CBC, no padding,
+		// same chaining semantics (CCCryptorReset restores the IV on stream reset).
+		cryptor=NULL;
+		if(CCCryptorCreateWithMode(kCCDecrypt,kCCModeCBC,kCCAlgorithmAES,ccNoPadding,
+		iv,keybytes,32,NULL,0,0,0,&cryptor)!=kCCSuccess) cryptor=NULL;
+		if(!cryptor) aes_decrypt_key256(keybytes,&aes); // fallback: vendored AES
+#else
 		aes_decrypt_key256(keybytes,&aes);
+#endif
 	}
 
 	return self;
 }
+
+#ifdef __APPLE__
+-(void)dealloc
+{
+	if(cryptor) CCCryptorRelease(cryptor);
+	[super dealloc];
+}
+#endif
 
 -(void)resetBlockStream
 {
 	[parent seekToFileOffset:startoffs];
 	[self setBlockPointer:buffer];
 	memcpy(block,iv,sizeof(iv));
+#ifdef __APPLE__
+	if(cryptor) CCCryptorReset(cryptor,iv);
+#endif
 }
 
 -(int)produceBlockAtOffset:(off_t)pos
@@ -164,6 +229,17 @@
 	int actual=[parent readAtMost:sizeof(buffer) toBuffer:buffer];
 	if(actual==0) return -1;
 
+#ifdef __APPLE__
+	if(cryptor)
+	{
+		size_t moved=0;
+		if(CCCryptorUpdate(cryptor,buffer,actual&~15,buffer,sizeof(buffer),&moved)==kCCSuccess)
+		return actual;
+		// fall through to the vendored implementation only if CommonCrypto failed
+		// outright (should not happen); the chain state is then undefined, so raise.
+		[XADException raiseDecrunchException];
+	}
+#endif
 	aes_cbc_decrypt(buffer,buffer,actual&~15,block,&aes);
 
 	return actual;
