@@ -132,40 +132,61 @@ encodingName:(NSString *)encoding
 
 +(NSString *)escapedASCIIStringForBytes:(const void *)bytes length:(size_t)length
 {
-	NSMutableString *str=[NSMutableString stringWithCapacity:length];
-
+	// [cooViewer] Build the escaped string in one C buffer instead of an appendFormat:
+	// per byte. This path runs for every name of an archive whose detected encoding
+	// fails to decode (a mis-detected or corrupt name table), where the old per-byte
+	// format-string parse was a ~100 ms cliff on a 2000-entry book. Each byte expands to
+	// at most 3 chars ("%xx"); output is byte-for-byte identical (ASCII verbatim, high
+	// bytes as lowercase %xx).
+	static const char hex[]="0123456789abcdef";
 	const uint8_t *byteptr=bytes;
-	for(int i=0;i<length;i++)
+	char *out=malloc(length*3+1);
+	if(!out) return @"";
+	size_t o=0;
+	for(size_t i=0;i<length;i++)
 	{
-		if(byteptr[i]<0x80) [str appendFormat:@"%c",byteptr[i]];
-		else [str appendFormat:@"%%%02x",byteptr[i]];
+		uint8_t b=byteptr[i];
+		// A NUL byte is dropped to match the original appendFormat:@"%c" behavior, where
+		// a 0 argument appends nothing (embedded NUL in a name is pathological anyway).
+		if(b==0) continue;
+		if(b<0x80) out[o++]=b;
+		else { out[o++]='%'; out[o++]=hex[b>>4]; out[o++]=hex[b&0xf]; }
 	}
-
-	return [NSString stringWithString:str];
+	NSString *result=[[[NSString alloc] initWithBytes:out length:o
+	encoding:NSASCIIStringEncoding] autorelease];
+	free(out);
+	return result?result:@"";
 }
 
 +(NSData *)escapedASCIIDataForString:(NSString *)string
 {
-	NSInteger length=[string length];
-	NSMutableData *encdata=[NSMutableData dataWithCapacity:length];
+	// [cooViewer] One C buffer instead of a per-character appendBytes:/characterAtIndex:.
+	// characterAtIndex: in a loop is O(n) per call on some string backings; pull the
+	// UTF-16 units once. Each unit expands to at most 6 bytes ("%uXXXX"); output is
+	// byte-for-byte identical to the original (ASCII verbatim, others as %uXXXX).
+	NSUInteger length=[string length];
+	unichar *units=malloc(length*sizeof(unichar));
+	if(!units) return [NSData data];
+	[string getCharacters:units range:NSMakeRange(0,length)];
 
-	for(int i=0;i<length;i++)
+	static const char hex[]="0123456789abcdef";
+	uint8_t *out=malloc(length*6);
+	if(!out) { free(units); return [NSData data]; }
+	size_t o=0;
+	for(NSUInteger i=0;i<length;i++)
 	{
-		char bytes[8];
-		unichar c=[string characterAtIndex:i];
-		if(c<0x80)
-		{
-			bytes[0]=c;
-			[encdata appendBytes:bytes length:1];
-		}
+		unichar c=units[i];
+		if(c<0x80) out[o++]=(uint8_t)c;
 		else
 		{
-			sprintf(bytes,"%%u%04x",c&0xffff);
-			[encdata appendBytes:bytes length:6];
+			out[o++]='%'; out[o++]='u';
+			out[o++]=hex[(c>>12)&0xf]; out[o++]=hex[(c>>8)&0xf];
+			out[o++]=hex[(c>>4)&0xf]; out[o++]=hex[c&0xf];
 		}
 	}
-
-	return [NSData dataWithData:encdata];
+	NSData *result=[NSData dataWithBytes:out length:o];
+	free(units); free(out);
+	return result;
 	// Do not use this because Cocotron doesn't support it.
 	//return [string dataUsingEncoding:NSNonLossyASCIIStringEncoding];
 }
