@@ -40,7 +40,7 @@
 
 	CLzmaDec lzma;
 
-	uint8_t inbuffer[16*1024];
+	uint8_t inbuffer[256*1024];
 	int bufbytes,bufoffs;
 }
 

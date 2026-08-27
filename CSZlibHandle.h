@@ -38,7 +38,7 @@ extern NSString *CSZlibException;
 	z_stream zs;
 	BOOL inited,seekback,endstreamateof;
 
-	uint8_t inbuffer[0x4000];
+	uint8_t inbuffer[0x40000];
 }
 
 +(CSZlibHandle *)zlibHandleWithHandle:(CSHandle *)handle;

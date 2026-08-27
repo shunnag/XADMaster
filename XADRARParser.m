@@ -752,7 +752,7 @@ isCorrupted:(BOOL)iscorrupted
 
 -(CSInputBuffer *)inputBufferForFileWithIndex:(int)file files:(NSArray *)files
 {
-	return CSInputBufferAlloc([self inputHandleForFileWithIndex:file files:files],16384);
+	return CSInputBufferAlloc([self inputHandleForFileWithIndex:file files:files],262144);
 }
 
 -(CSHandle *)inputHandleForFileWithIndex:(int)file files:(NSArray *)files

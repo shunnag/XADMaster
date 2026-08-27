@@ -841,7 +841,7 @@ inputParts:(NSArray *)parts isCorrupted:(BOOL)iscorrupted
 
 -(CSInputBuffer *)inputBufferWithDictionary:(NSDictionary *)dict
 {
-	return CSInputBufferAlloc([self inputHandleWithDictionary:dict],16384);
+	return CSInputBufferAlloc([self inputHandleWithDictionary:dict],262144);
 }
 
 -(CSHandle *)inputHandleWithDictionary:(NSDictionary *)dict

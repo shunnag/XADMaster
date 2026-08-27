@@ -64,12 +64,12 @@
 
 -(id)initWithInputBufferForHandle:(CSHandle *)handle
 {
-	return [self initWithInputBufferForHandle:handle length:CSHandleMaxLength bufferSize:4096];
+	return [self initWithInputBufferForHandle:handle length:CSHandleMaxLength bufferSize:65536];
 }
 
 -(id)initWithInputBufferForHandle:(CSHandle *)handle length:(off_t)length
 {
-	return [self initWithInputBufferForHandle:handle length:length bufferSize:4096];
+	return [self initWithInputBufferForHandle:handle length:length bufferSize:65536];
 }
 
 -(id)initWithInputBufferForHandle:(CSHandle *)handle bufferSize:(int)buffersize
