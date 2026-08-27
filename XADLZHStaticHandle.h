@@ -18,10 +18,14 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
  * MA 02110-1301  USA
  */
-#import "XADLZSSHandle.h"
+// [cooViewer] lh4-7(および ARJ/Zoo の同型 LZH)を per-byte の XADLZSSHandle から
+// バッチ展開の XADFastLZSSHandle へ移植(cooViewer-7ni)。マッチコピーが LZSS.h の
+// memcpy/memset 高速路に乗り、CSByteStreamHandle の 1 バイト 1 IMP 呼び出しが消える。
+// デコードのシンボル解釈・窓・オフセット/長さは不変(バイト同一)。
+#import "XADFastLZSSHandle.h"
 #import "XADPrefixCode.h"
 
-@interface XADLZHStaticHandle:XADLZSSHandle
+@interface XADLZHStaticHandle:XADFastLZSSHandle
 {
 	XADPrefixCode *literalcode,*distancecode;
 	int blocksize,blockpos;
@@ -32,7 +36,7 @@
 -(void)dealloc;
 
 -(void)resetLZSSHandle;
--(int)nextLiteralOrOffset:(int *)offset andLength:(int *)length atPosition:(off_t)pos;
+-(void)expandFromPosition:(off_t)pos;
 
 -(XADPrefixCode *)allocAndParseCodeOfWidth:(int)bits specialIndex:(int)specialindex;
 -(XADPrefixCode *)allocAndParseLiteralCode;

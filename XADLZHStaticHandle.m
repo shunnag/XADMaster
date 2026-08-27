@@ -46,37 +46,49 @@
 	blockpos=0;
 }
 
--(int)nextLiteralOrOffset:(int *)offset andLength:(int *)length atPosition:(off_t)pos
+-(void)expandFromPosition:(off_t)pos
 {
-	if(blockpos>=blocksize)
+	// 出力長(bufferend)に達するまでバッチ展開する。LHA には終端シンボルが無く、
+	// 出力長だけが終端を決める(XADLZSSShouldKeepExpanding が正確な位置で止める)。
+	// 途中で入力が尽きた壊れ書庫は CSInputBuffer が EOF 例外を投げる(従来と同じ)。
+	// blockpos はシンボル数を数える(1 リテラル/1 マッチ = 1 シンボル。長さ 200 の
+	// マッチも 1)。ブロック境界の Huffman 再構築は per-byte 版と同じ位置で起きる。
+	while(XADLZSSShouldKeepExpanding(self))
 	{
-		blocksize=CSInputNextBitString(input,16);
-		blockpos=0;
+		if(blockpos>=blocksize)
+		{
+			blocksize=CSInputNextBitString(input,16);
+			blockpos=0;
 
-		[literalcode release];
-		[distancecode release];
-		literalcode=nil;
-		distancecode=nil;
+			[literalcode release];
+			[distancecode release];
+			literalcode=nil;
+			distancecode=nil;
 
-		literalcode=[self allocAndParseLiteralCode];
-		distancecode=[self allocAndParseCodeOfWidth:windowbits<15?4:5 specialIndex:-1];
-	}
+			literalcode=[self allocAndParseLiteralCode];
+			distancecode=[self allocAndParseCodeOfWidth:windowbits<15?4:5 specialIndex:-1];
+		}
 
-	blockpos++;
+		blockpos++;
 
-	int lit=CSInputNextSymbolUsingCode(input,literalcode);
+		int lit=CSInputNextSymbolUsingCode(input,literalcode);
 
-	if(lit<0x100) return lit;
-	else
-	{
-		*length=lit-0x100+3;
+		if(lit<0x100)
+		{
+			XADEmitLZSSLiteral(self,lit,&pos);
+		}
+		else
+		{
+			int length=lit-0x100+3;
 
-		int bit=CSInputNextSymbolUsingCode(input,distancecode);
-		if(bit==0) *offset=1;
-		else if(bit==1) *offset=2;
-		else *offset=(1<<(bit-1))+CSInputNextBitString(input,bit-1)+1;
+			int bit=CSInputNextSymbolUsingCode(input,distancecode);
+			int offset;
+			if(bit==0) offset=1;
+			else if(bit==1) offset=2;
+			else offset=(1<<(bit-1))+CSInputNextBitString(input,bit-1)+1;
 
-		return XADLZSSMatch;
+			XADEmitLZSSMatch(self,offset,length,&pos);
+		}
 	}
 }
 
