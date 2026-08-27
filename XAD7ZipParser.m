@@ -325,7 +325,7 @@ static void FindAttribute(CSHandle *handle,int attribute)
 			break;
 
 			case 17: // Names
-				[self parseNamesForHandle:handle array:files];
+				[self parseNamesForHandle:handle propertySize:size array:files];
 			break;
 
 			case 18: // CTime
@@ -403,6 +403,49 @@ static void FindAttribute(CSHandle *handle,int attribute)
 	NSIndexSet *indexes=[self parseDefintionVectorForHandle:handle numberOfElements:[array count]];
 	for(NSInteger i=[indexes firstIndex];i!=NSNotFound;i=[indexes indexGreaterThanIndex:i])
 	SetNumberEntryInArray(array,i,[handle readUInt32LE],@"CRC");
+}
+
+// [cooViewer] Bulk variant of parseNamesForHandle:array:. The legacy loop issued one
+// readUInt16LE message and one appendFormat:@"%C" (format-string parse + varargs) per
+// character — ~36x slower than bulk conversion in isolation. The property size is known
+// to the caller, so read the whole names block once and slice it on NUL terminators.
+// Byte-conversion goes through CSUInt16LE into unichar units, so the resulting strings
+// are identical to the per-character path on every platform (lone surrogates included).
+// A structurally short block (missing terminator / undersized) raises instead of
+// silently consuming the following property's bytes.
+-(void)parseNamesForHandle:(CSHandle *)handle propertySize:(uint64_t)size array:(NSMutableArray *)array
+{
+	int external=[handle readUInt8];
+	if(external!=0) [XADException raiseNotSupportedException]; // TODO: figure out what to do
+
+	if(size<1||size>0x10000000) [XADException raiseIllegalDataException];
+	NSData *data=[handle readDataOfLength:(int)(size-1)];
+	const uint8_t *bytes=[data bytes];
+	NSUInteger numunits=[data length]/2;
+
+	unichar *units=malloc(numunits*sizeof(unichar));
+	if(!units) [XADException raiseOutOfMemoryException];
+	@try
+	{
+		for(NSUInteger j=0;j<numunits;j++) units[j]=CSUInt16LE(&bytes[j*2]);
+
+		int numnames=[array count];
+		NSUInteger pos=0;
+		for(int i=0;i<numnames;i++)
+		{
+			NSUInteger start=pos;
+			while(pos<numunits&&units[pos]!=0) pos++;
+			if(pos>=numunits) [XADException raiseIllegalDataException];
+			NSString *name=[NSString stringWithCharacters:&units[start] length:pos-start];
+			pos++;
+
+			SetObjectEntryInArray(array,i,[self XADPathWithString:name],XADFileNameKey);
+		}
+	}
+	@finally
+	{
+		free(units);
+	}
 }
 
 -(void)parseNamesForHandle:(CSHandle *)handle array:(NSMutableArray *)array

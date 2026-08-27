@@ -59,7 +59,15 @@ static inline BOOL IsLeafNode(XADPrefixCode *self,int node) { return LeftBranch(
 
 static inline int NewNode(XADPrefixCode *self)
 {
-	self->tree=Realloc(self->tree,(self->numentries+1)*sizeof(XADCodeTreeNode));
+	// [cooViewer] Grow the tree geometrically instead of one Realloc per node —
+	// RAR3/RAR5 rebuild their four codes on every table resend and LHA per block,
+	// which was hundreds of Realloc calls per rebuild.
+	if(self->numentries>=self->treecapacity)
+	{
+		int newcapacity=self->treecapacity<64?64:self->treecapacity*2;
+		self->tree=Realloc(self->tree,newcapacity*sizeof(XADCodeTreeNode));
+		self->treecapacity=newcapacity;
+	}
 	SetEmptyNode(self,self->numentries);
 	return self->numentries++;
 }
@@ -165,6 +173,7 @@ maximumLength:(int)maxlength shortestCodeIsZeros:(BOOL)zeros
 	if((self=[super init]))
 	{
 		tree=malloc(sizeof(XADCodeTreeNode));
+		treecapacity=1;
 		SetEmptyNode(self,0);
 		numentries=1;
 		minlength=INT_MAX;
@@ -183,6 +192,7 @@ maximumLength:(int)maxlength shortestCodeIsZeros:(BOOL)zeros
 	if((self=[super init]))
 	{
 		tree=(XADCodeTreeNode *)statictable; // TODO: fix the ugly cast
+		treecapacity=0; // static trees never grow (addCode raises first)
 		isstatic=YES;
 
 		stack=nil;

@@ -178,9 +178,6 @@ NSString *XADDisableMacForkExpansionKey=@"XADDisableMacForkExpansionKey";
 -(BOOL)parseAppleDoubleWithDictionary:(NSMutableDictionary *)dict
 name:(XADPath *)name retainPosition:(BOOL)retainpos
 {
-	// Ditto forks are only ever UTF-8.
-	if(![name canDecodeWithEncodingName:XADUTF8StringEncodingName]) return NO;
-
 	// Resource forks are at most 16 megabytes. Ignore larger files, as we will
 	// be reading the whole file into memory.
 	NSNumber *filesizenum=[dict objectForKey:XADFileSizeKey];
@@ -189,13 +186,20 @@ name:(XADPath *)name retainPosition:(BOOL)retainpos
 	off_t filesize=[filesizenum longLongValue];
 	if(filesize>16*1024*1024+65536) return NO;
 
+	// Ditto forks are always prefixed with "._" — test that before paying for the
+	// full-path decodes below. "._" is ASCII, so the prefix answer is identical even
+	// on the escaped-ASCII fallback a non-UTF-8 name decodes to, and ~all entries of
+	// ordinary archives (every page of a CJK-named book) bail out right here.
+	// [cooViewer] reordered: prefix test first, whole-path work only on match.
+	NSString *last=[name lastPathComponentWithEncodingName:XADUTF8StringEncodingName];
+	if(![last hasPrefix:@"._"]) return NO;
+
+	// Ditto forks are only ever UTF-8.
+	if(![name canDecodeWithEncodingName:XADUTF8StringEncodingName]) return NO;
+
 	// Check the file name.
 	NSString *first=[name firstPathComponentWithEncodingName:XADUTF8StringEncodingName];
-	NSString *last=[name lastPathComponentWithEncodingName:XADUTF8StringEncodingName];
 	XADPath *basepath=[name pathByDeletingLastPathComponentWithEncodingName:XADUTF8StringEncodingName];
-
-	// Ditto forks are always prefixed with "._".
-	if(![last hasPrefix:@"._"]) return NO;
 	NSString *newlast=[last substringFromIndex:2];
 
 	// Sometimes, they are stored in a root directory named "__MACOSX".

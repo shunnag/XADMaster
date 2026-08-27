@@ -41,9 +41,22 @@
 	}
 	else
 	{
+		// [cooViewer] Memoize the last name->encoding lookup per thread: enumeration
+		// resolves the same detected name for every path component (10k+ times for a
+		// 2000-entry book), and thread-local storage keeps this lock-free for the
+		// parallel extractor parses.
+		static __thread CFStringRef cachedname=NULL;
+		static __thread NSStringEncoding cachedencoding=0;
+		if(cachedname&&CFStringCompare(cachedname,(CFStringRef)encoding,0)==kCFCompareEqualTo)
+		return cachedencoding;
+
 		// Look up the encoding number for the name.
-		return CFStringConvertEncodingToNSStringEncoding(
+		NSStringEncoding result=CFStringConvertEncodingToNSStringEncoding(
 		CFStringConvertIANACharSetNameToEncoding((CFStringRef)encoding));
+		if(cachedname) CFRelease(cachedname);
+		cachedname=CFStringCreateCopy(kCFAllocatorDefault,(CFStringRef)encoding);
+		cachedencoding=result;
+		return result;
 	}
 }
 

@@ -1097,7 +1097,13 @@ isLastEntry:(BOOL)islastentry
 	// This is only done on OS X.
 	if(![dict objectForKey:XADPosixPermissionsKey])
 	{
-		mode_t mask=umask(0); umask(mask);
+		// [cooViewer] umask() is process-global: the get-and-restore pair was two
+		// syscalls per entry AND raced with concurrent parses (another thread could
+		// observe — and permanently record — the transient 0 mask). Read it once per
+		// process; the one-time window is unavoidable without a umask-free API.
+		static mode_t mask;
+		static dispatch_once_t maskonce;
+		dispatch_once(&maskonce,^{ mask=umask(0); umask(mask); });
 		[dict setObject:[NSNumber numberWithUnsignedShort:0777&~mask] forKey:XADPosixPermissionsKey];
 	}
 	#endif

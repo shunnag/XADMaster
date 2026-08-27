@@ -45,6 +45,7 @@
 -(NSIndexSet *)parseDefintionVectorForHandle:(CSHandle *)handle numberOfElements:(int)num;
 -(void)parseDatesForHandle:(CSHandle *)handle array:(NSMutableArray *)array key:(NSString *)key;
 -(void)parseCRCsForHandle:(CSHandle *)handle array:(NSMutableArray *)array;
+-(void)parseNamesForHandle:(CSHandle *)handle propertySize:(uint64_t)size array:(NSMutableArray *)array;
 -(void)parseNamesForHandle:(CSHandle *)handle array:(NSMutableArray *)array;
 -(void)parseAttributesForHandle:(CSHandle *)handle array:(NSMutableArray *)array;
 

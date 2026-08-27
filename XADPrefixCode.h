@@ -28,7 +28,7 @@ typedef struct XADCodeTableEntry XADCodeTableEntry;
 @interface XADPrefixCode:NSObject
 {
 	XADCodeTreeNode *tree;
-	int numentries,minlength,maxlength;
+	int numentries,treecapacity,minlength,maxlength;
 	BOOL isstatic;
 
 	int currnode;
