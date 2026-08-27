@@ -174,6 +174,7 @@
 		1B34A9AB11C2FF4600396C26 /* Bra86.c in Sources */ = {isa = PBXBuildFile; fileRef = 1BCD61530EF349EE00D86C43 /* Bra86.c */; };
 		1B34A9AC11C2FF4800396C26 /* Lzma2Dec.c in Sources */ = {isa = PBXBuildFile; fileRef = 1BBC3D7910B1DECE00A05E29 /* Lzma2Dec.c */; };
 		1B34A9AD11C2FF4A00396C26 /* LzmaDec.c in Sources */ = {isa = PBXBuildFile; fileRef = 1BCD5DA60EED8C9C00D86C43 /* LzmaDec.c */; };
+		C001E4A5000000000000B001 /* LzmaDecOpt.S in Sources */ = {isa = PBXBuildFile; fileRef = C001E4A5000000000000A501 /* LzmaDecOpt.S */; };
 		1B34A9AE11C2FF4D00396C26 /* XAD7ZipBCJ2Handle.m in Sources */ = {isa = PBXBuildFile; fileRef = 1BCD61960EF4208C00D86C43 /* XAD7ZipBCJ2Handle.m */; };
 		1B34A9AF11C2FF4E00396C26 /* XAD7ZipBranchHandles.m in Sources */ = {isa = PBXBuildFile; fileRef = 1BCD616C0EF3582300D86C43 /* XAD7ZipBranchHandles.m */; };
 		1B34A9B011C2FF5000396C26 /* XAD7ZipParser.m in Sources */ = {isa = PBXBuildFile; fileRef = 1B06D5AF0DDA669100D9C000 /* XAD7ZipParser.m */; };
@@ -475,6 +476,7 @@
 		1B467A5115CD9A73001AB1DD /* Bra86.c in Sources */ = {isa = PBXBuildFile; fileRef = 1BCD61530EF349EE00D86C43 /* Bra86.c */; };
 		1B467A5215CD9A73001AB1DD /* Lzma2Dec.c in Sources */ = {isa = PBXBuildFile; fileRef = 1BBC3D7910B1DECE00A05E29 /* Lzma2Dec.c */; };
 		1B467A5315CD9A73001AB1DD /* LzmaDec.c in Sources */ = {isa = PBXBuildFile; fileRef = 1BCD5DA60EED8C9C00D86C43 /* LzmaDec.c */; };
+		C001E4A5000000000000B002 /* LzmaDecOpt.S in Sources */ = {isa = PBXBuildFile; fileRef = C001E4A5000000000000A501 /* LzmaDecOpt.S */; };
 		1B467A5415CD9A73001AB1DD /* XAD7ZipBCJ2Handle.m in Sources */ = {isa = PBXBuildFile; fileRef = 1BCD61960EF4208C00D86C43 /* XAD7ZipBCJ2Handle.m */; };
 		1B467A5515CD9A73001AB1DD /* XAD7ZipBranchHandles.m in Sources */ = {isa = PBXBuildFile; fileRef = 1BCD616C0EF3582300D86C43 /* XAD7ZipBranchHandles.m */; };
 		1B467A5615CD9A73001AB1DD /* XAD7ZipParser.m in Sources */ = {isa = PBXBuildFile; fileRef = 1B06D5AF0DDA669100D9C000 /* XAD7ZipParser.m */; };
@@ -899,6 +901,7 @@
 		1B91CCDE11D97E7C0081E40A /* Bra86.c in Sources */ = {isa = PBXBuildFile; fileRef = 1BCD61530EF349EE00D86C43 /* Bra86.c */; };
 		1B91CCDF11D97E7C0081E40A /* Lzma2Dec.c in Sources */ = {isa = PBXBuildFile; fileRef = 1BBC3D7910B1DECE00A05E29 /* Lzma2Dec.c */; };
 		1B91CCE011D97E7C0081E40A /* LzmaDec.c in Sources */ = {isa = PBXBuildFile; fileRef = 1BCD5DA60EED8C9C00D86C43 /* LzmaDec.c */; };
+		C001E4A5000000000000B003 /* LzmaDecOpt.S in Sources */ = {isa = PBXBuildFile; fileRef = C001E4A5000000000000A501 /* LzmaDecOpt.S */; };
 		1B91CCE111D97E7C0081E40A /* XAD7ZipBCJ2Handle.m in Sources */ = {isa = PBXBuildFile; fileRef = 1BCD61960EF4208C00D86C43 /* XAD7ZipBCJ2Handle.m */; };
 		1B91CCE211D97E7C0081E40A /* XAD7ZipBranchHandles.m in Sources */ = {isa = PBXBuildFile; fileRef = 1BCD616C0EF3582300D86C43 /* XAD7ZipBranchHandles.m */; };
 		1B91CCE311D97E7C0081E40A /* XAD7ZipParser.m in Sources */ = {isa = PBXBuildFile; fileRef = 1B06D5AF0DDA669100D9C000 /* XAD7ZipParser.m */; };
@@ -1189,6 +1192,7 @@
 		1BCD5D4A0EECB0A300D86C43 /* XAD7ZipParser.m in Sources */ = {isa = PBXBuildFile; fileRef = 1B06D5AF0DDA669100D9C000 /* XAD7ZipParser.m */; };
 		1BCD5DA30EED8C9500D86C43 /* XADLZMAHandle.m in Sources */ = {isa = PBXBuildFile; fileRef = 1BCD5DA10EED8C9500D86C43 /* XADLZMAHandle.m */; };
 		1BCD5DA90EED8C9C00D86C43 /* LzmaDec.c in Sources */ = {isa = PBXBuildFile; fileRef = 1BCD5DA60EED8C9C00D86C43 /* LzmaDec.c */; };
+		C001E4A5000000000000B004 /* LzmaDecOpt.S in Sources */ = {isa = PBXBuildFile; fileRef = C001E4A5000000000000A501 /* LzmaDecOpt.S */; };
 		1BCD61590EF349EE00D86C43 /* Bra86.c in Sources */ = {isa = PBXBuildFile; fileRef = 1BCD61530EF349EE00D86C43 /* Bra86.c */; };
 		1BCD615A0EF349EE00D86C43 /* Bra.c in Sources */ = {isa = PBXBuildFile; fileRef = 1BCD61540EF349EE00D86C43 /* Bra.c */; };
 		1BCD615B0EF349EE00D86C43 /* BraIA64.c in Sources */ = {isa = PBXBuildFile; fileRef = 1BCD61550EF349EE00D86C43 /* BraIA64.c */; };
@@ -2043,6 +2047,7 @@
 		1BCD5DA10EED8C9500D86C43 /* XADLZMAHandle.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = XADLZMAHandle.m; sourceTree = "<group>"; };
 		1BCD5DA20EED8C9500D86C43 /* XADLZMAHandle.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = XADLZMAHandle.h; sourceTree = "<group>"; };
 		1BCD5DA60EED8C9C00D86C43 /* LzmaDec.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = LzmaDec.c; sourceTree = "<group>"; };
+		C001E4A5000000000000A501 /* LzmaDecOpt.S */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm; path = LzmaDecOpt.S; sourceTree = "<group>"; };
 		1BCD5DA70EED8C9C00D86C43 /* LzmaDec.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = LzmaDec.h; sourceTree = "<group>"; };
 		1BCD5DA80EED8C9C00D86C43 /* Types.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Types.h; sourceTree = "<group>"; };
 		1BCD61510EF349ED00D86C43 /* Bra.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Bra.h; sourceTree = "<group>"; };
@@ -3146,6 +3151,7 @@
 				1BBC3D7910B1DECE00A05E29 /* Lzma2Dec.c */,
 				1BBC3D7A10B1DECE00A05E29 /* Lzma2Dec.h */,
 				1BCD5DA60EED8C9C00D86C43 /* LzmaDec.c */,
+				C001E4A5000000000000A501 /* LzmaDecOpt.S */,
 				1BCD5DA70EED8C9C00D86C43 /* LzmaDec.h */,
 				1BCD5DA80EED8C9C00D86C43 /* Types.h */,
 			);
@@ -4090,6 +4096,7 @@
 				1B34A9AB11C2FF4600396C26 /* Bra86.c in Sources */,
 				1B34A9AC11C2FF4800396C26 /* Lzma2Dec.c in Sources */,
 				1B34A9AD11C2FF4A00396C26 /* LzmaDec.c in Sources */,
+				C001E4A5000000000000B001 /* LzmaDecOpt.S in Sources */,
 				1B34A9AE11C2FF4D00396C26 /* XAD7ZipBCJ2Handle.m in Sources */,
 				1B34A9AF11C2FF4E00396C26 /* XAD7ZipBranchHandles.m in Sources */,
 				1B34A9B011C2FF5000396C26 /* XAD7ZipParser.m in Sources */,
@@ -4320,6 +4327,7 @@
 				1B467A5115CD9A73001AB1DD /* Bra86.c in Sources */,
 				1B467A5215CD9A73001AB1DD /* Lzma2Dec.c in Sources */,
 				1B467A5315CD9A73001AB1DD /* LzmaDec.c in Sources */,
+				C001E4A5000000000000B002 /* LzmaDecOpt.S in Sources */,
 				1B467A5415CD9A73001AB1DD /* XAD7ZipBCJ2Handle.m in Sources */,
 				1B467A5515CD9A73001AB1DD /* XAD7ZipBranchHandles.m in Sources */,
 				1B467A5615CD9A73001AB1DD /* XAD7ZipParser.m in Sources */,
@@ -4549,6 +4557,7 @@
 				1B91CCDE11D97E7C0081E40A /* Bra86.c in Sources */,
 				1B91CCDF11D97E7C0081E40A /* Lzma2Dec.c in Sources */,
 				1B91CCE011D97E7C0081E40A /* LzmaDec.c in Sources */,
+				C001E4A5000000000000B003 /* LzmaDecOpt.S in Sources */,
 				1B91CCE111D97E7C0081E40A /* XAD7ZipBCJ2Handle.m in Sources */,
 				1B91CCE211D97E7C0081E40A /* XAD7ZipBranchHandles.m in Sources */,
 				1B91CCE311D97E7C0081E40A /* XAD7ZipParser.m in Sources */,
@@ -4872,6 +4881,7 @@
 				1BCD5D4A0EECB0A300D86C43 /* XAD7ZipParser.m in Sources */,
 				1BCD5DA30EED8C9500D86C43 /* XADLZMAHandle.m in Sources */,
 				1BCD5DA90EED8C9C00D86C43 /* LzmaDec.c in Sources */,
+				C001E4A5000000000000B004 /* LzmaDecOpt.S in Sources */,
 				1BCD61590EF349EE00D86C43 /* Bra86.c in Sources */,
 				1BCD615A0EF349EE00D86C43 /* Bra.c in Sources */,
 				1BCD615B0EF349EE00D86C43 /* BraIA64.c in Sources */,

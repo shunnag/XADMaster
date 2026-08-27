@@ -77,8 +77,8 @@ static inline uint16_t LittleEndianUInt16(uint8_t *ptr) { return ptr[0]|(ptr[1]<
 static inline uint32_t LittleEndianUInt32(uint8_t *ptr) { return ptr[0]|(ptr[1]<<8)|(ptr[2]<<16)|(ptr[3]<<24); }
 
 // Allocator functions for LZMA.
-static void *Alloc(void *p,size_t size) { return malloc(size); }
-static void Free(void *p,void *address) { return free(address); }
+static void *Alloc(ISzAllocPtr p,size_t size) { return malloc(size); }
+static void Free(ISzAllocPtr p,void *address) { return free(address); }
 static ISzAlloc lzmaallocator={Alloc,Free};
 
 // Helper functions for reading from the input stream.

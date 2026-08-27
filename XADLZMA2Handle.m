@@ -22,8 +22,8 @@
 #import "XADLZMA2Handle.h"
 #import "XADException.h"
 
-static void *Alloc(void *p,size_t size) { return malloc(size); }
-static void Free(void *p,void *address) { return free(address); }
+static void *Alloc(ISzAllocPtr p,size_t size) { return malloc(size); }
+static void Free(ISzAllocPtr p,void *address) { return free(address); }
 static ISzAlloc allocator={Alloc,Free};
 
 @implementation XADLZMA2Handle
