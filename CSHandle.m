@@ -307,41 +307,55 @@ CSReadValueImpl(uint32_t,readID,CSUInt32BE)
 	uint8_t *buf=malloc(capacity);
 	if(!buf) return [self remainingFileContents];
 
-	size_t total=0;
-	while(total<capacity)
+	// A decrunch/checksum exception from readAtMost: (corrupt entry, wrong password)
+	// must not leak the raw buffer — the classic path was exception-safe, so this
+	// one has to be too.
+	@try
 	{
-		size_t want=capacity-total;
-		if(want>0x10000000) want=0x10000000;
-		int actual=[self readAtMost:(int)want toBuffer:buf+total];
-		if(actual<=0) break;
-		total+=(size_t)actual;
-	}
-
-	if(total==capacity)
-	{
-		// The hint may undershoot the real stream length; keep draining through the
-		// same handle chain so the tail is both captured and checksummed.
-		uint8_t extra[16384];
-		int actual=[self readAtMost:sizeof(extra) toBuffer:extra];
-		if(actual>0)
+		size_t total=0;
+		while(total<capacity)
 		{
-			NSMutableData *data=[NSMutableData dataWithBytesNoCopy:buf length:total freeWhenDone:YES];
-			do
-			{
-				[data appendBytes:extra length:actual];
-				actual=[self readAtMost:sizeof(extra) toBuffer:extra];
-			}
-			while(actual>0);
-			return data;
+			size_t want=capacity-total;
+			if(want>0x10000000) want=0x10000000;
+			int actual=[self readAtMost:(int)want toBuffer:buf+total];
+			if(actual<=0) break;
+			total+=(size_t)actual;
 		}
-	}
-	else if(total<capacity)
-	{
-		uint8_t *shrunk=realloc(buf,total?total:1);
-		if(shrunk) buf=shrunk;
-	}
 
-	return [NSData dataWithBytesNoCopy:buf length:total freeWhenDone:YES];
+		if(total==capacity)
+		{
+			// The hint may undershoot the real stream length; keep draining through the
+			// same handle chain so the tail is both captured and checksummed.
+			uint8_t extra[16384];
+			int actual=[self readAtMost:sizeof(extra) toBuffer:extra];
+			if(actual>0)
+			{
+				NSMutableData *data=[NSMutableData dataWithBytesNoCopy:buf length:total freeWhenDone:YES];
+				buf=NULL; // owned by data now
+				do
+				{
+					[data appendBytes:extra length:actual];
+					actual=[self readAtMost:sizeof(extra) toBuffer:extra];
+				}
+				while(actual>0);
+				return data;
+			}
+		}
+		else if(total<capacity)
+		{
+			uint8_t *shrunk=realloc(buf,total?total:1);
+			if(shrunk) buf=shrunk;
+		}
+
+		NSData *result=[NSData dataWithBytesNoCopy:buf length:total freeWhenDone:YES];
+		buf=NULL; // owned by result now
+		return result;
+	}
+	@catch(id exception)
+	{
+		free(buf);
+		@throw;
+	}
 }
 
 -(NSData *)readDataOfLength:(int)length
