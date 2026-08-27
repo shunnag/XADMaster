@@ -48,7 +48,21 @@ static inline uint32_t swap(uint32_t x)
 }
 #endif
 
-#if defined(__ARM_FEATURE_CRC32)
+#if defined(__APPLE__)
+#include <zlib.h>
+
+// [cooViewer] Delegate the reflected edb88320 CRC to the system zlib's crc32() on Apple
+// platforms. Apple's libz uses a multi-stream PMULL/CRC32-instruction kernel measured at
+// ~47 GB/s on M4 Max — ~4x the single-stream __crc32d loop below and ~12x sliced-16 —
+// and XADMaster already links libz everywhere (CSZlibHandle). zlib's crc32() takes and
+// returns the finalized (post-xor) value while XADMaster carries the raw shift-register
+// state, so condition with ^0xffffffff on both sides. Byte-identical to the table
+// implementation (CRCCalculationTests + Tests/CRCFastRegression).
+static uint32_t XADCalculateCRC32HW_edb88320(uint32_t crc,const uint8_t *buffer,int length)
+{
+	return (uint32_t)crc32(crc^0xffffffffu,buffer,(uInt)length)^0xffffffffu;
+}
+#elif defined(__ARM_FEATURE_CRC32)
 #include <arm_acle.h>
 #include <string.h>
 
@@ -71,8 +85,9 @@ static uint32_t XADCalculateCRC32HW_edb88320(uint32_t crc,const uint8_t *buffer,
 
 uint32_t XADCalculateCRCFast(uint32_t prevcrc,const uint8_t *buffer,int length, const uint32_t (*table)[256])
 {
-#if defined(__ARM_FEATURE_CRC32)
-	// [cooViewer] hardware CRC32 for the edb88320 poly — the only table used with this function.
+#if defined(__APPLE__) || defined(__ARM_FEATURE_CRC32)
+	// [cooViewer] hardware/system-zlib CRC32 for the edb88320 poly — the only table used with
+	// this function.
 	if(table==XADCRCTable_sliced16_edb88320) return XADCalculateCRC32HW_edb88320(prevcrc,buffer,length);
 #endif
     uint32_t crc = prevcrc;
