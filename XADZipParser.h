@@ -49,6 +49,7 @@ compressedSizePointer:(off_t *)compsizeptr CRCPointer:(uint32_t *)crcptr;
 -(NSDictionary *)parseZipExtraWithLength:(int)length nameData:(NSData *)namedata
 uncompressedSizePointer:(off_t *)uncompsizeptr compressedSizePointer:(off_t *)compsizeptr;
 -(XADZipParserCentralDirectoryRecord)readCentralDirectoryRecord;
+-(XADZipParserCentralDirectoryRecord)readCentralDirectoryRecordFromHandle:(CSHandle *)fh;
 
 -(void)addZipEntryWithSystem:(int)system
 extractVersion:(int)extractversion

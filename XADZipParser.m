@@ -19,6 +19,7 @@
  * MA 02110-1301  USA
  */
 #import "XADZipParser.h"
+#import "CSMemoryHandle.h"
 #import "XADZipImplodeHandle.h"
 #import "XADZipShrinkHandle.h"
 #import "XADDeflateHandle.h"
@@ -283,7 +284,32 @@
 	//NSLog(@"disknumber:%d centraldirstartdisk:%d numentriesdisk:%qd numentries:%qd centralsize:%qd centraloffset:%qd",
 	//disknumber,centraldirstartdisk,numentriesdisk,numentries,centralsize,centraloffset);
 
-	[fh seekToFileOffset:[self offsetForVolume:centraldirstartdisk offset:centraloffset]];
+	off_t cdstart=[self offsetForVolume:centraldirstartdisk offset:centraloffset];
+	[fh seekToFileOffset:cdstart];
+
+	// [cooViewer] Read the whole central directory into memory once and parse the records
+	// from there, so the per-entry field reads and the seek-back after each local-header
+	// visit no longer thrash the file handle's stdio buffer (measurable on warm caches,
+	// and it stops the CD pages from being evicted by the interleaved local-header seeks).
+	// The CD spans [cdstart, centraloffs) — centraloffs is the EOCD position, which
+	// physically bounds the CD (centralsize is encoder-controlled and may lie, so it is
+	// not trusted for the span). Gated to single-volume archives; any oversize span, short
+	// read, or multi-volume layout falls back to the streaming file handle unchanged.
+	// cdhandle is the handle the CD is parsed from; local headers are always read from fh.
+	CSHandle *cdhandle=fh;
+	off_t cdspan=centraloffs-cdstart;
+	if([[self volumeSizes] count]<=1 && cdspan>0 && cdspan<=(256LL<<20)
+	   && cdspan<=[fh fileSize])
+	{
+		// cdspan is bounded by the 256 MB cap above, so the int cast cannot truncate.
+		NSData *cddata=[fh readDataOfLengthAtMost:(int)cdspan];
+		if(cddata && [cddata length]==cdspan)
+		{
+			cdhandle=[CSMemoryHandle memoryHandleForReadingData:cddata];
+		}
+		[fh seekToFileOffset:cdstart]; // fallback path reparses from here
+	}
+	BOOL cdinmemory=(cdhandle!=fh);
 
 	for(int i=0;i<numentries;i++)
 	{
@@ -292,13 +318,13 @@
 		NSAutoreleasePool *pool=[NSAutoreleasePool new];
 		@try
 		{
-			XADZipParserCentralDirectoryRecord cdr = [self readCentralDirectoryRecord];
+			XADZipParserCentralDirectoryRecord cdr = [self readCentralDirectoryRecordFromHandle:cdhandle];
 
 			// Parse comment data
 			NSData *commentdata=nil;
-			if(cdr.commentlength) commentdata=[fh readDataOfLength:cdr.commentlength];
+			if(cdr.commentlength) commentdata=[cdhandle readDataOfLength:cdr.commentlength];
 
-			off_t next=[fh offsetInFile];
+			off_t next=[cdhandle offsetInFile];
 
 			// Some idiotic compressors write files with more than 65535 files without
 			// using Zip64, so numentries overflows. Try to detect if there is enough space
@@ -306,7 +332,10 @@
 			// parsing to include them. This may happen multiple times.
 			if(i==numentries-1 && zip64offs<0)
 			{
-				if(centraloffset+centralsize-next>65536*46) numentries+=65536;
+				// next is memory-relative when the CD is in memory; the check needs the
+				// file-absolute position (the CD end is centraloffset+centralsize).
+				off_t filenext=cdinmemory?centraloffset+next:next;
+				if(centraloffset+centralsize-filenext>65536*46) numentries+=65536;
 			}
 
 			// Read local header
@@ -362,7 +391,10 @@
 				[self setObject:[NSNumber numberWithBool:YES] forPropertyKey:XADIsCorruptedKey];
 			}
 
-			[fh seekToFileOffset:next];
+			// Only the streaming fallback (cdhandle==fh) needs the seek-back: the
+			// local-header read moved the shared handle. When the CD is in memory,
+			// cdhandle is untouched by the local-header read and already sits at `next`.
+			if(!cdinmemory) [fh seekToFileOffset:next];
 		}
 		@finally
 		{
@@ -373,8 +405,14 @@
 
 -(XADZipParserCentralDirectoryRecord)readCentralDirectoryRecord
 {
-    CSHandle *fh=[self handle];
+    // [cooViewer] delegate to the handle-parameterised variant so the central directory
+    // can be parsed from an in-memory copy (see parseWithCentralDirectoryAtOffset:) while
+    // the existing unit tests keep calling this file-handle version unchanged.
+    return [self readCentralDirectoryRecordFromHandle:[self handle]];
+}
 
+-(XADZipParserCentralDirectoryRecord)readCentralDirectoryRecordFromHandle:(CSHandle *)fh
+{
     XADZipParserCentralDirectoryRecord cdr;
     // Read central directory record.
     cdr.centralid=[fh readID];
