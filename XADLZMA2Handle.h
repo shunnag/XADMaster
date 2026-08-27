@@ -43,6 +43,13 @@
 	uint8_t inbuffer[256*1024];
 	int bufbytes,bufoffs;
 	BOOL seekback;
+
+	// [cooViewer] dict-reset 索引(後方シークの巻き戻し短縮。cooViewer-7ni)。
+	// 初回の後方シークで遅延構築する。resetoutputs[i] の出力オフセットから
+	// 復号を再開でき、そこは resetpackeds[i](startoffs 相対)から始まる。
+	off_t *resetoutputs,*resetpackeds;
+	int numresets;
+	BOOL indexbuilt;
 }
 
 -(id)initWithHandle:(CSHandle *)handle propertyData:(NSData *)propertydata;
@@ -53,5 +60,6 @@
 
 -(void)resetStream;
 -(int)streamAtMost:(int)num toBuffer:(void *)buffer;
+-(void)seekToFileOffset:(off_t)offset;
 
 @end
