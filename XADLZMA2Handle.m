@@ -212,13 +212,28 @@ static ISzAlloc allocator={Alloc,Free};
 		}
 		if(best>=1)  // best==0 は先頭からの再開=従来経路と同じなので使わない
 		{
-			[parent seekToFileOffset:startoffs+resetpackeds[best]];
-			Lzma2Dec_Init(&lzma);
-			bufbytes=bufoffs=0;
-			streampos=resetoutputs[best];
-			endofstream=NO;
-			[self readAndDiscardBytes:offset-streampos];
-			return;
+			// dict-reset 点からの再開。0x01 非圧縮リセット点は「直後の LZMA チャンクが
+			// props を持つ」ことに依存する(7-Zip は必ず持たせるが LZMA2 仕様上の保証は
+			// ない)。想定外の第三者ストリームで再開が壊れた場合に備え、失敗したら
+			// 先頭からの再展開(従来動作)へ静かに戻す — 以前復号できた入力を壊さない
+			@try
+			{
+				[parent seekToFileOffset:startoffs+resetpackeds[best]];
+				Lzma2Dec_Init(&lzma);
+				bufbytes=bufoffs=0;
+				streampos=resetoutputs[best];
+				endofstream=NO;
+				[self readAndDiscardBytes:offset-streampos];
+				return;
+			}
+			@catch(id e)
+			{
+				streampos=0;
+				endofstream=NO;
+				[self resetStream];
+				[self readAndDiscardBytes:offset];
+				return;
+			}
 		}
 	}
 
