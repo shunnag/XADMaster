@@ -89,6 +89,7 @@ extern NSString *XADFinderFlags;
 -(NSString *)formatName;
 -(BOOL)isEncrypted;
 -(BOOL)isSolid;
+-(NSInteger)solidGroupOfEntry:(int)n;
 -(BOOL)isCorrupted;
 -(int)numberOfEntries;
 -(BOOL)immediateExtractionFailed;

@@ -401,6 +401,26 @@ NSString *XADFinderFlags=@"XADFinderFlags";
 	return [issolid boolValue];
 }
 
+// [cooViewer] Solid-group observable for entry-level parallelism decisions. Returns a
+// value-stable group id: entries sharing a solid stream (a 7z folder, a solid RAR run)
+// report the same id, and an entry that is alone in its group — or not solid-tracked at
+// all (-1) — can be extracted independently of every other entry. The id is derived
+// from the parser's per-entry dictionaries (the group leader's XADIndexKey), never from
+// object identity, so callers can compare and hash it freely.
+-(NSInteger)solidGroupOfEntry:(int)n
+{
+	NSDictionary *dict=[self dataForkParserDictionaryForEntry:n];
+	if(!dict) return -1;
+	NSNumber *first=[dict objectForKey:XADFirstSolidIndexKey];
+	if(first) return [first integerValue];
+	if([dict objectForKey:XADSolidObjectKey])
+	{
+		NSNumber *index=[dict objectForKey:XADIndexKey];
+		if(index) return [index integerValue];
+	}
+	return -1;
+}
+
 -(BOOL)isCorrupted
 {
 	NSNumber *iscorrupted=[[parser properties] objectForKey:XADIsCorruptedKey];
