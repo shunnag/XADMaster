@@ -40,7 +40,9 @@
 -(void)dealloc
 {
 	[password release];
-
+#ifdef __APPLE__
+	if(ctr) CCCryptorRelease(ctr);
+#endif
 	[super dealloc];
 }
 
@@ -96,10 +98,23 @@ static void DeriveKey(NSData *password,NSData *salt,int iterations,uint8_t *keyb
 	aes_encrypt_key(keybuf,keybytes*8,&aes);
 	memset(counter,0,16);
 
+#ifdef __APPLE__
+	// [cooViewer] hardware AES for the keystream blocks (ECB-encrypt the counter) and
+	// hardware HMAC-SHA1 for the authentication tag. The counter is incremented
+	// little-endian in 16-byte steps exactly as below, so only the block cipher and the
+	// MAC move to CommonCrypto; the keystream bytes and tag are identical.
+	if(ctr) { CCCryptorRelease(ctr); ctr=NULL; }
+	useCC=CCCryptorCreate(kCCEncrypt,kCCAlgorithmAES,kCCOptionECBMode,
+	keybuf,keybytes,NULL,&ctr)==kCCSuccess;
+	if(useCC) CCHmacInit(&cchmac,kCCHmacAlgSHA1,keybuf+keybytes,keybytes);
+	if(!useCC)
+#endif
+	{
 	HMAC_SHA1_Init(&hmac);
 	HMAC_SHA1_UpdateKey(&hmac,keybuf+keybytes,keybytes);
 	HMAC_SHA1_EndKey(&hmac);
 	HMAC_SHA1_StartMessage(&hmac);
+	}
 
 	hmac_done=NO;
 	hmac_correct=NO;
@@ -109,6 +124,25 @@ static void DeriveKey(NSData *password,NSData *salt,int iterations,uint8_t *keyb
 -(int)streamAtMost:(int)num toBuffer:(void *)buffer
 {
 	int actual=[parent readAtMost:num toBuffer:buffer];
+
+#ifdef __APPLE__
+	if(useCC)
+	{
+		CCHmacUpdate(&cchmac,buffer,actual);
+		for(int i=0;i<actual;i++)
+		{
+			int bufoffs=(i+streampos)%16;
+			if(bufoffs==0)
+			{
+				for(int j=0;j<8;j++) if(++counter[j]!=0) break;
+				size_t moved=0;
+				CCCryptorUpdate(ctr,counter,16,aesbuffer,16,&moved);
+			}
+			((uint8_t *)buffer)[i]^=aesbuffer[bufoffs];
+		}
+		return actual;
+	}
+#endif
 
 	HMAC_SHA1_UpdateMessage(&hmac,buffer,actual);
 
@@ -135,6 +169,10 @@ static void DeriveKey(NSData *password,NSData *salt,int iterations,uint8_t *keyb
 	{
 		uint8_t filedigest[10],calcdigest[20];
 		[parent readBytes:10 toBuffer:filedigest];
+#ifdef __APPLE__
+		if(useCC) CCHmacFinal(&cchmac,calcdigest);
+		else
+#endif
 		HMAC_SHA1_EndMessage(calcdigest,&hmac);
 		hmac_correct=memcmp(calcdigest,filedigest,10)==0;
 		hmac_done=YES;

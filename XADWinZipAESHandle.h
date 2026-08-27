@@ -22,6 +22,13 @@
 #import "Crypto/aes.h"
 #import "Crypto/hmac_sha1.h"
 
+// [cooViewer] On Apple platforms AES-CTR and the authentication HMAC-SHA1 run through
+// CommonCrypto (hardware AES/SHA); other platforms keep the vendored implementations.
+#ifdef __APPLE__
+#import <CommonCrypto/CommonCryptor.h>
+#import <CommonCrypto/CommonHMAC.h>
+#endif
+
 @interface XADWinZipAESHandle:CSStreamHandle
 {
 	NSData *password;
@@ -31,6 +38,11 @@
 	aes_encrypt_ctx aes;
 	uint8_t counter[16],aesbuffer[16];
 	HMAC_SHA1_CTX hmac;
+#ifdef __APPLE__
+	CCCryptorRef ctr;
+	CCHmacContext cchmac;
+	BOOL useCC;
+#endif
 	BOOL hmac_done,hmac_correct;
 }
 

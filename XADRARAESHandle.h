@@ -22,11 +22,20 @@
 
 #import "Crypto/aes.h"
 
+// [cooViewer] On Apple platforms the CBC decryption runs through CommonCrypto
+// (hardware AES); other platforms keep the vendored Gladman AES.
+#ifdef __APPLE__
+#import <CommonCrypto/CommonCryptor.h>
+#endif
+
 @interface XADRARAESHandle:CSStreamHandle
 {
 	off_t startoffs;
 
 	aes_decrypt_ctx aes;
+#ifdef __APPLE__
+	CCCryptorRef cryptor;
+#endif
 	uint8_t iv[16],block[16],blockbuffer[16];
 }
 

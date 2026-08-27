@@ -85,4 +85,31 @@ static uint8_t DecryptByte(XADZipCryptHandle *self)
 	return b;
 }
 
+// [cooViewer] Bulk override of the per-byte producer loop. The base class dispatches
+// produceByteAtOffset: through an IMP trampoline for every single byte; the PKZIP stream
+// cipher is inherently sequential (each byte's keystream depends on the previous
+// plaintext byte), but the dispatch and setjmp-per-call overhead is pure tax. Decrypt in
+// a tight local loop with one EOF guard, identical byte output. streampos/bytesproduced
+// are the base class's ivars; keep them consistent so seeks/copies still work.
+-(int)streamAtMost:(int)num toBuffer:(void *)buffer
+{
+	bytesproduced=0;
+	uint8_t *out=buffer;
+	if(setjmp(eofenv)==0)
+	{
+		while(bytesproduced<num)
+		{
+			uint8_t b=CSInputNextByte(input)^DecryptByte(self);
+			UpdateKeys(self,b);
+			out[bytesproduced++]=b;
+			if(endofstream) break;
+		}
+	}
+	else
+	{
+		[self endStream];
+	}
+	return bytesproduced;
+}
+
 @end
