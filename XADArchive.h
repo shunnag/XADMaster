@@ -64,7 +64,10 @@ extern NSString *XADFinderFlags;
 +(XADArchive *)archiveForFile:(NSString *)filename;
 +(XADArchive *)recursiveArchiveForFile:(NSString *)filename;
 
-
+// XADArchive is the only public framework surface available to cooViewer, so
+// expose the app-wide ZIP parser default here and forward it internally.
++(void)setDefaultZipLazyLocalHeaders:(BOOL)flag;
++(BOOL)defaultZipLazyLocalHeaders;
 
 -(id)init;
 -(id)initWithFile:(NSString *)file;

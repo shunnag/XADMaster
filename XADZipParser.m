@@ -41,6 +41,7 @@
 static NSString *XADZipLocalHeaderPendingKey=@"ZipLocalHeaderPending";
 static NSString *XADZipLocalHeaderOffsetKey=@"ZipLocalHeaderOffset";
 static NSString *XADZipLocalHeaderDiskKey=@"ZipLocalHeaderDisk";
+static BOOL XADZipParserDefaultLazyLocalHeaders=YES;
 
 @interface XADZipParser ()
 -(XADPath *)unicodePathForZipExtraWithHandle:(CSHandle *)fh size:(int)size nameData:(NSData *)namedata;
@@ -58,6 +59,24 @@ compressedSizePointer:(off_t *)compsizeptr allowUnicodePath:(BOOL)allowunicode;
 @implementation XADZipParser
 
 @synthesize lazyLocalHeaders;
+
++(void)setDefaultLazyLocalHeaders:(BOOL)flag
+{
+	@synchronized([XADZipParser class])
+	{
+		XADZipParserDefaultLazyLocalHeaders=flag;
+	}
+}
+
++(BOOL)defaultLazyLocalHeaders
+{
+	BOOL flag;
+	@synchronized([XADZipParser class])
+	{
+		flag=XADZipParserDefaultLazyLocalHeaders;
+	}
+	return flag;
+}
 
 +(int)requiredHeaderSize { return 8; }
 
@@ -124,7 +143,7 @@ compressedSizePointer:(off_t *)compsizeptr allowUnicodePath:(BOOL)allowunicode;
 		prevname=nil;
 		// [cooViewer] Central-directory metadata is sufficient for listing normal ZIPs,
 		// so avoid a network round trip per entry unless compatibility mode is requested.
-		lazyLocalHeaders=YES;
+		lazyLocalHeaders=[[self class] defaultLazyLocalHeaders];
 		centralDirectoryNameData=nil;
 		centralDirectoryExtraDictionary=nil;
 		addingLazyEntry=NO;

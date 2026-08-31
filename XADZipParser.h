@@ -35,6 +35,9 @@
 
 @property(nonatomic,assign) BOOL lazyLocalHeaders;
 
++(void)setDefaultLazyLocalHeaders:(BOOL)flag;
++(BOOL)defaultLazyLocalHeaders;
+
 +(int)requiredHeaderSize;
 +(BOOL)recognizeFileWithHandle:(CSHandle *)handle firstBytes:(NSData *)data name:(NSString *)name;
 +(NSArray *)volumesForHandle:(CSHandle *)handle firstBytes:(NSData *)data name:(NSString *)name;

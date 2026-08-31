@@ -21,6 +21,7 @@
 #define XAD_NO_DEPRECATED
 
 #import "XADArchive.h"
+#import "XADZipParser.h"
 #import "CSMemoryHandle.h"
 #import "CSHandle.h"
 #import "Progress.h"
@@ -58,6 +59,16 @@ NSString *XADFinderFlags=@"XADFinderFlags";
 	}
 
 	return archive;
+}
+
++(void)setDefaultZipLazyLocalHeaders:(BOOL)flag
+{
+	[XADZipParser setDefaultLazyLocalHeaders:flag];
+}
+
++(BOOL)defaultZipLazyLocalHeaders
+{
+	return [XADZipParser defaultLazyLocalHeaders];
 }
 
 +(NSArray *)volumesForFile:(NSString *)filename // deprecated
@@ -1261,5 +1272,4 @@ fileFraction:(double)fileprogress estimatedTotalFraction:(double)totalprogress
 -(XADAction)archive:(XADArchive *)archive nameDecodingDidFailForEntry:(int)n bytes:(const char *)bytes { return XADAbortAction; }
 
 @end
-
 
