@@ -36,7 +36,8 @@ typedef struct CSInputBuffer
 	uint8_t *buffer;
 	unsigned int bufsize,bufbytes,currbyte;
 
-	uint32_t bits;
+	// [cooViewer] A 64-bit reservoir halves refill frequency in the bit-decoder hot path.
+	uint64_t bits;
 	unsigned int numbits;
 } CSInputBuffer;
 
@@ -78,7 +79,9 @@ void _CSInputFillBuffer(CSInputBuffer *self);
 
 // Byte reading
 
-#define CSInputBufferLookAhead 4
+// [cooViewer] A 64-bit fill can inspect through byte 7. Refilling with eight bytes
+// of lookahead keeps that range inside the preserved/refilled buffer tail.
+#define CSInputBufferLookAhead 8
 
 static inline void _CSInputBufferRaiseEOF(CSInputBuffer *self)
 {
@@ -171,14 +174,15 @@ static inline unsigned int CSInputPeekBitString(CSInputBuffer *self,int numbits)
 {
 	if(numbits==0) return 0;
 	_CSInputCheckAndFillBits(self,numbits);
-	return self->bits>>(32-numbits);
+	return (unsigned int)(self->bits>>(64-numbits));
 }
 
 static inline unsigned int CSInputPeekBitStringLE(CSInputBuffer *self,int numbits)
 {
 	if(numbits==0) return 0;
 	_CSInputCheckAndFillBitsLE(self,numbits);
-	return self->bits&((1<<numbits)-1);
+	// [cooViewer] Start the mask at uint64_t so a valid 32-bit peek never shifts int by 32.
+	return (unsigned int)(self->bits&(((uint64_t)1<<numbits)-1));
 }
 
 static inline void CSInputSkipPeekedBits(CSInputBuffer *self,int numbits)
@@ -188,7 +192,9 @@ static inline void CSInputSkipPeekedBits(CSInputBuffer *self,int numbits)
 
 	if(_CSInputBytesLeftInBuffer(self)<0) _CSInputBufferRaiseEOF(self);
 
-	self->bits<<=numbits;
+	// [cooViewer] Shifting by the 64-bit reservoir width is undefined in C.
+	if(numbits>=64) self->bits=0;
+	else self->bits<<=numbits;
 	self->numbits-=numbits;
 }
 
@@ -199,7 +205,9 @@ static inline void CSInputSkipPeekedBitsLE(CSInputBuffer *self,int numbits)
 
 	if(_CSInputBytesLeftInBuffer(self)<0) _CSInputBufferRaiseEOF(self);
 
-	self->bits>>=numbits;
+	// [cooViewer] Shifting by the 64-bit reservoir width is undefined in C.
+	if(numbits>=64) self->bits=0;
+	else self->bits>>=numbits;
 	self->numbits-=numbits;
 }
 
@@ -225,7 +233,6 @@ CSInputNextValueImpl(int16_t,CSInputNextInt16BE,CSInt16BE)
 CSInputNextValueImpl(int32_t,CSInputNextInt32BE,CSInt32BE)
 CSInputNextValueImpl(uint16_t,CSInputNextUInt16BE,CSUInt16BE)
 CSInputNextValueImpl(uint32_t,CSInputNextUInt32BE,CSUInt32BE)
-
 
 
 

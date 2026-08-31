@@ -189,52 +189,33 @@ void _CSInputFillBuffer(CSInputBuffer *self)
 
 // Bitstream reading
 
-// TODO: clean up and/or make faster
+// [cooViewer] The 64-bit reservoir halves refill frequency. An empty BE reservoir
+// uses one unaligned-safe 8-byte load; partial fills preserve the existing bits.
 void _CSInputFillBits(CSInputBuffer *self)
 {
 	_CSInputCheckAndFillBuffer(self);
 
-	int numbytes=(32-self->numbits)>>3;
+	int numbytes=(64-self->numbits)>>3;
 	int left=_CSInputBytesLeftInBuffer(self);
-	if(numbytes>left) numbytes=left;
-
 	int startoffset=self->numbits>>3;
-//	int shift=24-self->numbits;
+	int available=left-startoffset;
+	if(available<0) available=0;
+	if(numbytes>available) numbytes=available;
 
-//	for(int i=0;i<numbytes;i++)
-//	{
-//		self->bits|=_CSInputPeekByteWithoutEOF(self,i+startoffset)<<shift;
-//		shift-=8;
-//	}
-
-// Commented out as it causes false positives for RAR archives. E.g. "CWCHEAT_0_2_2_REVD.RAR" from test data
-	//if(startoffset+numbytes>_CSInputBytesLeftInBuffer(self)) _CSInputBufferRaiseEOF(self);
-
-	switch(numbytes)
+	if(numbytes==8&&self->numbits==0)
 	{
-		case 4:
-			self->bits=
-			(_CSInputPeekByteWithoutEOF(self,startoffset)<<24)|
-			(_CSInputPeekByteWithoutEOF(self,startoffset+1)<<16)|
-			(_CSInputPeekByteWithoutEOF(self,startoffset+2)<<8)|
-			_CSInputPeekByteWithoutEOF(self,startoffset+3);
-		break;
-		case 3:
-			self->bits|=(
-				(_CSInputPeekByteWithoutEOF(self,startoffset)<<16)|
-				(_CSInputPeekByteWithoutEOF(self,startoffset+1)<<8)|
-				(_CSInputPeekByteWithoutEOF(self,startoffset+2)<<0)
-			)<<(8-self->numbits);
-		break;
-		case 2:
-			self->bits|=(
-				(_CSInputPeekByteWithoutEOF(self,startoffset)<<8)|
-				(_CSInputPeekByteWithoutEOF(self,startoffset+1)<<0)
-			)<<(16-self->numbits);
-		break;
-		case 1:
-			self->bits|=_CSInputPeekByteWithoutEOF(self,startoffset)<<(24-self->numbits);
-		break;
+		uint64_t value;
+		memcpy(&value,self->buffer+self->currbyte,8);
+		self->bits=__builtin_bswap64(value);
+	}
+	else if(numbytes>0)
+	{
+		uint64_t accumulated=0;
+		for(int i=0;i<numbytes;i++)
+		{
+			accumulated=(accumulated<<8)|_CSInputPeekByteWithoutEOF(self,startoffset+i);
+		}
+		self->bits|=accumulated<<(64-self->numbits-numbytes*8);
 	}
 
 	self->numbits+=numbytes*8;
@@ -244,15 +225,16 @@ void _CSInputFillBitsLE(CSInputBuffer *self)
 {
 	_CSInputCheckAndFillBuffer(self);
 
-	int numbytes=(32-self->numbits)>>3;
+	int numbytes=(64-self->numbits)>>3;
 	int left=_CSInputBytesLeftInBuffer(self);
-	if(numbytes>left) numbytes=left;
-
 	int startoffset=self->numbits>>3;
+	int available=left-startoffset;
+	if(available<0) available=0;
+	if(numbytes>available) numbytes=available;
 
 	for(int i=0;i<numbytes;i++)
 	{
-		self->bits|=_CSInputPeekByteWithoutEOF(self,i+startoffset)<<self->numbits;
+		self->bits|=(uint64_t)_CSInputPeekByteWithoutEOF(self,i+startoffset)<<self->numbits;
 		self->numbits+=8;
 	}
 }
