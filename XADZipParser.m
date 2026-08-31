@@ -38,9 +38,26 @@
 #import <sys/stat.h>
 
 
+static NSString *XADZipLocalHeaderPendingKey=@"ZipLocalHeaderPending";
+static NSString *XADZipLocalHeaderOffsetKey=@"ZipLocalHeaderOffset";
+static NSString *XADZipLocalHeaderDiskKey=@"ZipLocalHeaderDisk";
+
+@interface XADZipParser ()
+-(XADPath *)unicodePathForZipExtraWithHandle:(CSHandle *)fh size:(int)size nameData:(NSData *)namedata;
+-(NSDictionary *)parseZipExtraOrNilWithHandle:(CSHandle *)fh length:(int)length
+nameData:(NSData *)namedata uncompressedSizePointer:(off_t *)uncompsizeptr
+compressedSizePointer:(off_t *)compsizeptr allowUnicodePath:(BOOL)allowunicode;
+-(NSDictionary *)parseZipExtraWithHandle:(CSHandle *)fh length:(int)length
+nameData:(NSData *)namedata uncompressedSizePointer:(off_t *)uncompsizeptr
+compressedSizePointer:(off_t *)compsizeptr allowUnicodePath:(BOOL)allowunicode;
+-(void)resolveLocalHeaderForEntryWithDictionary:(NSDictionary *)dict;
+@end
+
 
 
 @implementation XADZipParser
+
+@synthesize lazyLocalHeaders;
 
 +(int)requiredHeaderSize { return 8; }
 
@@ -105,6 +122,12 @@
 	{
 		prevdict=nil;
 		prevname=nil;
+		// [cooViewer] Central-directory metadata is sufficient for listing normal ZIPs,
+		// so avoid a network round trip per entry unless compatibility mode is requested.
+		lazyLocalHeaders=YES;
+		centralDirectoryNameData=nil;
+		centralDirectoryExtraDictionary=nil;
+		addingLazyEntry=NO;
 	}
 	return self;
 }
@@ -113,6 +136,8 @@
 {
 	[prevdict release];
 	[prevname release];
+	[centralDirectoryNameData release];
+	[centralDirectoryExtraDictionary release];
 	[super dealloc];
 }
 
@@ -338,6 +363,42 @@
 				if(centraloffset+centralsize-filenext>65536*46) numentries+=65536;
 			}
 
+			if(lazyLocalHeaders)
+			{
+				// [cooViewer] Preserve the detector's archive-global ordering: the CD name is
+				// decoded exactly once here, in CD order. Deferred local names are never passed
+				// to the detector because a later sample could latch a different encoding.
+				addingLazyEntry=YES;
+				lazyLocalHeaderOffset=cdr.locheaderoffset;
+				lazyLocalHeaderDisk=cdr.startdisk;
+				@try
+				{
+					[self addZipEntryWithSystem:cdr.system
+							 extractVersion:cdr.extractversion
+									  flags:cdr.flags
+							  compressionMethod:cdr.compressionmethod
+									   date:cdr.date crc:cdr.crc
+								  localDate:0
+							 compressedSize:cdr.compsize
+						   uncompressedSize:cdr.uncompsize
+						extendedFileAttributes:cdr.extfileattrib
+							extraDictionary:centralDirectoryExtraDictionary
+								 dataOffset:0
+								   nameData:centralDirectoryNameData
+								commentData:commentdata
+								isLastEntry:i==numentries-1];
+				}
+				@finally
+				{
+					addingLazyEntry=NO;
+				}
+
+				// [cooViewer] A streaming CD shares fh with list-time MacBinary/AppleDouble
+				// probing, which can force this lazy read while the list is still being built.
+				if(!cdinmemory) [fh seekToFileOffset:next];
+				continue;
+			}
+
 			// Read local header
 			[fh seekToFileOffset:[self offsetForVolume:cdr.startdisk offset:cdr.locheaderoffset]];
 
@@ -414,6 +475,11 @@
 -(XADZipParserCentralDirectoryRecord)readCentralDirectoryRecordFromHandle:(CSHandle *)fh
 {
     XADZipParserCentralDirectoryRecord cdr;
+	[centralDirectoryNameData release];
+	centralDirectoryNameData=nil;
+	[centralDirectoryExtraDictionary release];
+	centralDirectoryExtraDictionary=nil;
+
     // Read central directory record.
     cdr.centralid=[fh readID];
     if(cdr.centralid!=0x504b0102) [XADException raiseIllegalDataException]; // could try recovering here
@@ -435,9 +501,14 @@
     cdr.extfileattrib=[fh readUInt32LE];
     cdr.locheaderoffset=[fh readUInt32LE];
 
-    [fh skipBytes:cdr.namelength];
+	// [cooViewer] The central directory is the ZIP authority for entry names. Keep the
+	// bytes alongside the returned fixed fields because the historical public C struct
+	// lives in XADZipParserStructures.h and cannot be extended within this fork's scope.
+	if(cdr.namelength) centralDirectoryNameData=[[fh readDataOfLength:cdr.namelength] retain];
 
-    // Read central directory extra fields, just to find the Zip64 field.
+	NSMutableDictionary *extradict=nil;
+
+	// [cooViewer] Read central directory extra fields to find Zip64 and Unicode Path metadata.
     int length=cdr.extralength;
     while(length>=8)
     {
@@ -479,9 +550,20 @@
             //break;
             //
         }
+		else if(lazyLocalHeaders&&extid==0x7075&&size>=6)
+		{
+			XADPath *name=[self unicodePathForZipExtraWithHandle:fh size:size
+			nameData:centralDirectoryNameData];
+			if(name)
+			{
+				if(!extradict) extradict=[NSMutableDictionary dictionary];
+				[extradict setObject:name forKey:XADFileNameKey];
+			}
+		}
         [fh seekToFileOffset:nextextra];
     }
     if(length) [fh skipBytes:length];
+	if(extradict) centralDirectoryExtraDictionary=[extradict copy];
     return cdr;
 }
 
@@ -747,11 +829,20 @@ static int MatchZipEntry(const uint8_t *bytes,int available,off_t offset,void *s
 					  uncompressedSizePointer:(off_t *)uncompsizeptr
 						compressedSizePointer:(off_t *)compsizeptr
 {
+	return [self parseZipExtraOrNilWithHandle:[self handle] length:length nameData:namedata
+	uncompressedSizePointer:uncompsizeptr compressedSizePointer:compsizeptr allowUnicodePath:YES];
+}
+
+-(NSDictionary *)parseZipExtraOrNilWithHandle:(CSHandle *)fh length:(int)length
+									 nameData:(NSData *)namedata
+					  uncompressedSizePointer:(off_t *)uncompsizeptr
+						compressedSizePointer:(off_t *)compsizeptr
+							 allowUnicodePath:(BOOL)allowunicode
+{
 	@try {
-		return [self parseZipExtraWithLength:length
-									nameData:namedata
-					 uncompressedSizePointer:uncompsizeptr
-					   compressedSizePointer:compsizeptr];
+		return [self parseZipExtraWithHandle:fh length:length nameData:namedata
+		uncompressedSizePointer:uncompsizeptr compressedSizePointer:compsizeptr
+		allowUnicodePath:allowunicode];
 	} @catch(id e) {
 		[self setObject:[NSNumber numberWithBool:YES] forPropertyKey:XADIsCorruptedKey];
 		NSLog(@"Error parsing Zip extra fields: %@",e);
@@ -762,7 +853,21 @@ static int MatchZipEntry(const uint8_t *bytes,int available,off_t offset,void *s
 -(NSDictionary *)parseZipExtraWithLength:(int)length nameData:(NSData *)namedata
 uncompressedSizePointer:(off_t *)uncompsizeptr compressedSizePointer:(off_t *)compsizeptr
 {
-	CSHandle *fh=[self handle];
+	return [self parseZipExtraWithHandle:[self handle] length:length nameData:namedata
+	uncompressedSizePointer:uncompsizeptr compressedSizePointer:compsizeptr];
+}
+
+-(NSDictionary *)parseZipExtraWithHandle:(CSHandle *)fh length:(int)length nameData:(NSData *)namedata
+uncompressedSizePointer:(off_t *)uncompsizeptr compressedSizePointer:(off_t *)compsizeptr
+{
+	return [self parseZipExtraWithHandle:fh length:length nameData:namedata
+	uncompressedSizePointer:uncompsizeptr compressedSizePointer:compsizeptr allowUnicodePath:YES];
+}
+
+-(NSDictionary *)parseZipExtraWithHandle:(CSHandle *)fh length:(int)length nameData:(NSData *)namedata
+uncompressedSizePointer:(off_t *)uncompsizeptr compressedSizePointer:(off_t *)compsizeptr
+allowUnicodePath:(BOOL)allowunicode
+{
 	NSMutableDictionary *dict=[NSMutableDictionary dictionary];
 
 	off_t end=[fh offsetInFile]+length;
@@ -894,34 +999,14 @@ uncompressedSizePointer:(off_t *)uncompsizeptr compressedSizePointer:(off_t *)co
 				[dict setObject:[NSNumber numberWithUnsignedInt:[fh readUInt16BE]] forKey:XADFinderFlagsKey];
 			}
 		}
-		else if(extid==0x7075&&size>=6) // Unicode Path Extra Field
+		else if(allowunicode&&extid==0x7075&&size>=6) // Unicode Path Extra Field
 		{
-			int version=[fh readUInt8];
-			if(version==1)
+			XADPath *newname=[self unicodePathForZipExtraWithHandle:fh size:size nameData:namedata];
+			if(newname)
 			{
-				uint32_t crc=[fh readUInt32LE];
-				NSData *unicodedata=[fh readDataOfLength:size-5];
-
-				// Some archivers append garbage zero bytes to the end of the name.
-				// Remove them if necessary.
-				const uint8_t *bytes=[unicodedata bytes];
-				int length=size-5;
-				if(length && bytes[length-1]==0)
-				{
-					while(length && bytes[length-1]==0) length--;
-					unicodedata=[unicodedata subdataWithRange:NSMakeRange(0,length)];
-				}
-
-				if((XADCalculateCRC(0xffffffff,[namedata bytes],[namedata length],
-				XADCRCTable_edb88320)^0xffffffff)==crc)
-				{
-					XADPath *oldname=[dict objectForKey:XADFileNameKey];
-					XADPath *newname=[self XADPathWithData:unicodedata encodingName:XADUTF8StringEncodingName separators:XADEitherPathSeparator];
-					if(oldname) [dict setObject:oldname forKey:@"ZipRegularFilename"];
-					[dict setObject:newname forKey:XADFileNameKey];
-					// Apparently at least some files use Windows path separators instead of the
-					// usual Unix. Not sure what to expect here, so using both.
-				}
+				XADPath *oldname=[dict objectForKey:XADFileNameKey];
+				if(oldname) [dict setObject:oldname forKey:@"ZipRegularFilename"];
+				[dict setObject:newname forKey:XADFileNameKey];
 			}
 		}
 		else if(extid==0x9901&&size>=7)
@@ -943,6 +1028,29 @@ uncompressedSizePointer:(off_t *)uncompsizeptr compressedSizePointer:(off_t *)co
 	[fh seekToFileOffset:end];
 
 	return dict;
+}
+
+-(XADPath *)unicodePathForZipExtraWithHandle:(CSHandle *)fh size:(int)size nameData:(NSData *)namedata
+{
+	if(size<6||[fh readUInt8]!=1) return nil;
+
+	uint32_t crc=[fh readUInt32LE];
+	NSData *unicodedata=[fh readDataOfLength:size-5];
+	uint32_t namecrc=XADCalculateCRC(0xffffffff,[namedata bytes],[namedata length],
+	XADCRCTable_edb88320)^0xffffffff;
+	if(namecrc!=crc) return nil;
+
+	// Some archivers append garbage zero bytes to the end of the name.
+	// Remove them if necessary.
+	const uint8_t *bytes=[unicodedata bytes];
+	int length=size-5;
+	while(length&&bytes[length-1]==0) length--;
+	if(length!=size-5) unicodedata=[unicodedata subdataWithRange:NSMakeRange(0,length)];
+
+	// Apparently at least some files use Windows path separators instead of the
+	// usual Unix. Not sure what to expect here, so using both.
+	return [self XADPathWithData:unicodedata encodingName:XADUTF8StringEncodingName
+	separators:XADEitherPathSeparator];
 }
 
 
@@ -977,6 +1085,18 @@ isLastEntry:(BOOL)islastentry
 		[NSNumber numberWithLongLong:dataoffset],XADDataOffsetKey,
 		[NSNumber numberWithUnsignedLongLong:compsize],XADDataLengthKey,
 	nil];
+	if(addingLazyEntry)
+	{
+		// [cooViewer] The data offset and ZipCrypt date are local-header facts. Keep
+		// only the CD locator until first extraction resolves and caches both values.
+		[dict removeObjectForKey:XADDataOffsetKey];
+		[dict removeObjectForKey:@"ZipLocalDate"];
+		[dict setObject:[NSNumber numberWithBool:YES] forKey:XADZipLocalHeaderPendingKey];
+		[dict setObject:[NSNumber numberWithLongLong:lazyLocalHeaderOffset]
+		forKey:XADZipLocalHeaderOffsetKey];
+		[dict setObject:[NSNumber numberWithInt:lazyLocalHeaderDisk]
+		forKey:XADZipLocalHeaderDiskKey];
+	}
 	if(flags&0x01) [dict setObject:[NSNumber numberWithBool:YES] forKey:XADIsEncryptedKey];
 
 	if(system!=-1) [dict setObject:[NSNumber numberWithInt:system] forKey:@"ZipOS"];
@@ -1182,12 +1302,75 @@ isLastEntry:(BOOL)islastentry
 }
 
 
+-(void)resolveLocalHeaderForEntryWithDictionary:(NSDictionary *)dict
+{
+	if(![dict objectForKey:XADZipLocalHeaderPendingKey]) return;
+
+	// [cooViewer] A parser owns one seekable source handle, so serialize the first-read
+	// transition and recheck it under the lock. This also makes the per-entry cache exact:
+	// repeated handle requests never visit the local header again.
+	@synchronized(self)
+	{
+		if(![dict objectForKey:XADZipLocalHeaderPendingKey]) return;
+		if(![dict isKindOfClass:[NSMutableDictionary class]])
+		[XADException raiseIllegalDataException];
+
+		NSMutableDictionary *mutabledict=(NSMutableDictionary *)dict;
+		int disk=[[dict objectForKey:XADZipLocalHeaderDiskKey] intValue];
+		off_t offset=[[dict objectForKey:XADZipLocalHeaderOffsetKey] longLongValue];
+		CSHandle *fh=[self handle];
+		[fh seekToFileOffset:[self offsetForVolume:disk offset:offset]];
+
+		uint32_t localid=[fh readID];
+		if(localid!=0x504b0304&&localid!=0x504b0506)
+		[XADException raiseIllegalDataException];
+
+		//int localextractversion=[fh readUInt16LE];
+		//int localflags=[fh readUInt16LE];
+		//int localcompressionmethod=[fh readUInt16LE];
+		[fh skipBytes:6];
+		uint32_t localdate=[fh readUInt32LE];
+		//uint32_t localcrc=[fh readUInt32LE];
+		//uint32_t localcompsize=[fh readUInt32LE];
+		//uint32_t localuncompsize=[fh readUInt32LE];
+		[fh skipBytes:12];
+		int localnamelength=[fh readUInt16LE];
+		int localextralength=[fh readUInt16LE];
+
+		// [cooViewer] Both lengths come from the actual local header. In particular,
+		// local extra bytes are part of the offset and must not be inferred from the CD.
+		off_t dataoffset=[fh offsetInFile]+localnamelength+localextralength;
+
+		// [cooViewer] Do not decode or analyze the deferred local name. XADStringSource is
+		// archive-global and latched, so feeding it here would make encoding depend on which
+		// entry is extracted first. The CD name was already analyzed exactly once in order.
+		if(localnamelength) [fh skipBytes:localnamelength];
+
+		NSDictionary *extradict=nil;
+		if(localextralength)
+		{
+			extradict=[self parseZipExtraOrNilWithHandle:fh length:localextralength
+			nameData:nil uncompressedSizePointer:nil compressedSizePointer:nil
+			allowUnicodePath:NO];
+		}
+		if(extradict) [mutabledict addEntriesFromDictionary:extradict];
+
+		[mutabledict setObject:[NSNumber numberWithUnsignedInt:localdate] forKey:@"ZipLocalDate"];
+		[mutabledict setObject:[NSNumber numberWithLongLong:dataoffset] forKey:XADDataOffsetKey];
+		[mutabledict removeObjectForKey:XADZipLocalHeaderPendingKey];
+		[mutabledict removeObjectForKey:XADZipLocalHeaderOffsetKey];
+		[mutabledict removeObjectForKey:XADZipLocalHeaderDiskKey];
+	}
+}
+
+
 
 
 
 
 -(CSHandle *)rawHandleForEntryWithDictionary:(NSDictionary *)dict wantChecksum:(BOOL)checksum
 {
+	[self resolveLocalHeaderForEntryWithDictionary:dict];
 	CSHandle *fh=[self handleAtDataOffsetForDictionary:dict];
 
 	int compressionmethod=[[dict objectForKey:@"ZipCompressionMethod"] intValue];
@@ -1302,4 +1485,3 @@ isLastEntry:(BOOL)islastentry
 -(NSString *)formatName { return @"Zip"; }
 
 @end
-

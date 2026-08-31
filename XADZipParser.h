@@ -25,7 +25,15 @@
 {
 	NSMutableDictionary *prevdict;
 	NSData *prevname;
+	BOOL lazyLocalHeaders;
+	NSData *centralDirectoryNameData;
+	NSDictionary *centralDirectoryExtraDictionary;
+	BOOL addingLazyEntry;
+	off_t lazyLocalHeaderOffset;
+	int lazyLocalHeaderDisk;
 }
+
+@property(nonatomic,assign) BOOL lazyLocalHeaders;
 
 +(int)requiredHeaderSize;
 +(BOOL)recognizeFileWithHandle:(CSHandle *)handle firstBytes:(NSData *)data name:(NSString *)name;
@@ -47,6 +55,8 @@ compressedSizePointer:(off_t *)compsizeptr CRCPointer:(uint32_t *)crcptr;
 //-(void)findNextZipMarkerStartingAt:(off_t)startpos;
 //-(void)findNoSeekMarkerForDictionary:(NSMutableDictionary *)dict;
 -(NSDictionary *)parseZipExtraWithLength:(int)length nameData:(NSData *)namedata
+uncompressedSizePointer:(off_t *)uncompsizeptr compressedSizePointer:(off_t *)compsizeptr;
+-(NSDictionary *)parseZipExtraWithHandle:(CSHandle *)fh length:(int)length nameData:(NSData *)namedata
 uncompressedSizePointer:(off_t *)uncompsizeptr compressedSizePointer:(off_t *)compsizeptr;
 -(XADZipParserCentralDirectoryRecord)readCentralDirectoryRecord;
 -(XADZipParserCentralDirectoryRecord)readCentralDirectoryRecordFromHandle:(CSHandle *)fh;

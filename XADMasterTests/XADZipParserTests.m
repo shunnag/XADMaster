@@ -7,6 +7,7 @@
 
 #import <XCTest/XCTest.h>
 #import "../CSMemoryHandle.h"
+#import "../CRC.h"
 #import "../XADZipParser.h"
 
 typedef struct XADZipParserTestsSUT {
@@ -15,11 +16,64 @@ typedef struct XADZipParserTestsSUT {
     XADZipParser * parser;
 } XADZipParserTestsSUT;
 
+@interface XADCountingZipParser : XADZipParser
+{
+    NSMutableArray *analyzedNames;
+}
+-(NSArray *)analyzedNames;
+@end
+
+@implementation XADCountingZipParser
+
+-(id)init
+{
+    if((self=[super init])) analyzedNames=[[NSMutableArray alloc] init];
+    return self;
+}
+
+-(void)dealloc
+{
+    [analyzedNames release];
+    [super dealloc];
+}
+
+-(XADPath *)XADPathWithData:(NSData *)data separators:(const char *)separators
+{
+    [analyzedNames addObject:data];
+    return [super XADPathWithData:data separators:separators];
+}
+
+-(NSArray *)analyzedNames { return analyzedNames; }
+
+@end
+
+
 @interface XADZipParserTests : XCTestCase
+{
+    NSMutableArray *foundEntries;
+}
 
 @end
 
 @implementation XADZipParserTests
+
+- (void)setUp
+{
+    [super setUp];
+    foundEntries=[[NSMutableArray alloc] init];
+}
+
+- (void)tearDown
+{
+    [foundEntries release];
+    foundEntries=nil;
+    [super tearDown];
+}
+
+- (void)archiveParser:(XADArchiveParser *)parser foundEntryWithDictionary:(NSDictionary *)dict
+{
+    [foundEntries addObject:dict];
+}
 
 - (void)testCentralDirectoryLocationNotFound
 {
@@ -372,8 +426,341 @@ typedef struct XADZipParserTestsSUT {
 
 }
 
+- (void)testLazyLocalHeadersDefaultToEnabled
+{
+    XADZipParser *parser=[[XADZipParser alloc] init];
+    XCTAssertTrue([parser lazyLocalHeaders]);
+    [parser release];
+}
+
+- (void)testLazyModeUsesCentralDirectoryNameWhenLocalNameDiffers
+{
+    NSData *localName=[@"local.txt" dataUsingEncoding:NSUTF8StringEncoding];
+    NSData *centralName=[@"central.txt" dataUsingEncoding:NSUTF8StringEncoding];
+    NSData *archiveData=[self _zipWithLocalName:localName centralName:centralName
+        localExtra:nil centralExtra:nil data:[@"payload" dataUsingEncoding:NSUTF8StringEncoding]
+        localSignature:0x04034b50 flags:0];
+
+    [self _parserOfClass:[XADZipParser class] archiveData:archiveData lazyLocalHeaders:nil];
+
+    XCTAssertEqual([foundEntries count], (NSUInteger)1);
+    XCTAssertEqualObjects([[[foundEntries objectAtIndex:0] objectForKey:XADFileNameKey] string], @"central.txt");
+}
+
+- (void)testDisabledLazyModeKeepsLegacyLocalNameBehavior
+{
+    NSData *localName=[@"local.txt" dataUsingEncoding:NSUTF8StringEncoding];
+    NSData *centralName=[@"central.txt" dataUsingEncoding:NSUTF8StringEncoding];
+    NSData *archiveData=[self _zipWithLocalName:localName centralName:centralName
+        localExtra:nil centralExtra:nil data:[@"payload" dataUsingEncoding:NSUTF8StringEncoding]
+        localSignature:0x04034b50 flags:0];
+
+    [self _parserOfClass:[XADZipParser class] archiveData:archiveData
+        lazyLocalHeaders:[NSNumber numberWithBool:NO]];
+
+    XCTAssertEqual([foundEntries count], (NSUInteger)1);
+    XCTAssertEqualObjects([[[foundEntries objectAtIndex:0] objectForKey:XADFileNameKey] string], @"local.txt");
+}
+
+- (void)testDisabledLazyModeKeepsLegacyBrokenLocalSignatureBehavior
+{
+    NSData *name=[@"broken.txt" dataUsingEncoding:NSUTF8StringEncoding];
+    NSData *archiveData=[self _zipWithLocalName:name centralName:name localExtra:nil
+        centralExtra:nil data:[@"payload" dataUsingEncoding:NSUTF8StringEncoding]
+        localSignature:0x11111111 flags:0];
+
+    XADZipParser *parser=[self _parserOfClass:[XADZipParser class] archiveData:archiveData
+        lazyLocalHeaders:[NSNumber numberWithBool:NO]];
+
+    XCTAssertEqual([foundEntries count], (NSUInteger)0);
+    XCTAssertTrue([[[parser properties] objectForKey:XADIsCorruptedKey] boolValue]);
+}
+
+- (void)testLazyLocalHeaderUsesActualLocalExtraLengthAndCachesDataOffset
+{
+    NSData *name=[@"page.txt" dataUsingEncoding:NSUTF8StringEncoding];
+    NSData *payload=[@"payload" dataUsingEncoding:NSUTF8StringEncoding];
+    XADMemoryHandle *extraHandle=[CSMemoryHandle memoryHandleForWriting];
+    [extraHandle writeUInt16LE:0xcafe];
+    [extraHandle writeUInt16LE:6];
+    [extraHandle writeData:[@"ABCDEF" dataUsingEncoding:NSASCIIStringEncoding]];
+    NSData *localExtra=[extraHandle data];
+    NSMutableData *archiveData=[self _zipWithLocalName:name centralName:name
+        localExtra:localExtra centralExtra:nil data:payload localSignature:0x04034b50 flags:0];
+
+    XADZipParser *parser=[self _parserOfClass:[XADZipParser class] archiveData:archiveData
+        lazyLocalHeaders:nil];
+    XCTAssertEqual([foundEntries count], (NSUInteger)1);
+    NSMutableDictionary *entry=[foundEntries objectAtIndex:0];
+    XCTAssertNil([entry objectForKey:XADDataOffsetKey]);
+    XCTAssertNil([entry objectForKey:@"ZipLocalDate"]);
+
+    XADError error=XADNoError;
+    CSHandle *handle=[parser handleForEntryWithDictionary:entry wantChecksum:YES error:&error];
+    XCTAssertEqual(error, XADNoError);
+    XCTAssertEqualObjects([handle remainingFileContents], payload);
+    XCTAssertEqual([[entry objectForKey:XADDataOffsetKey] longLongValue],
+        (long long)(30+[name length]+[localExtra length]));
+    XCTAssertEqual([[entry objectForKey:@"ZipLocalDate"] unsignedIntValue], (uint32_t)0x50210000);
+
+    // If the second request revisits the local header this now-invalid signature will fail.
+    uint8_t *bytes=[archiveData mutableBytes];
+    bytes[0]=bytes[1]=bytes[2]=bytes[3]=0;
+    handle=[parser handleForEntryWithDictionary:entry wantChecksum:YES error:&error];
+    XCTAssertEqual(error, XADNoError);
+    XCTAssertEqualObjects([handle remainingFileContents], payload);
+}
+
+- (void)testLazyModeListsEntryWithBrokenLocalSignatureButExtractionFails
+{
+    NSData *name=[@"broken.txt" dataUsingEncoding:NSUTF8StringEncoding];
+    NSData *archiveData=[self _zipWithLocalName:name centralName:name localExtra:nil
+        centralExtra:nil data:[@"payload" dataUsingEncoding:NSUTF8StringEncoding]
+        localSignature:0x11111111 flags:0];
+
+    XADZipParser *parser=[self _parserOfClass:[XADZipParser class] archiveData:archiveData
+        lazyLocalHeaders:nil];
+    XCTAssertEqual([foundEntries count], (NSUInteger)1);
+
+    XADError error=XADNoError;
+    CSHandle *handle=[parser handleForEntryWithDictionary:[foundEntries objectAtIndex:0]
+        wantChecksum:YES error:&error];
+    XCTAssertNil(handle);
+    XCTAssertEqual(error, XADIllegalDataError);
+}
+
+- (void)testCentralDirectoryUnicodePathExtraOverridesRegularName
+{
+    NSData *regularName=[@"page01.jpg" dataUsingEncoding:NSUTF8StringEncoding];
+    NSData *centralExtra=[self _unicodePathExtraForNameData:regularName
+        unicodeName:@"ページ01.jpg" validCRC:YES];
+    NSData *archiveData=[self _zipWithLocalName:regularName centralName:regularName
+        localExtra:nil centralExtra:centralExtra data:[NSData data]
+        localSignature:0x04034b50 flags:0];
+
+    [self _parserOfClass:[XADZipParser class] archiveData:archiveData lazyLocalHeaders:nil];
+
+    XCTAssertEqual([foundEntries count], (NSUInteger)1);
+    XCTAssertEqualObjects([[[foundEntries objectAtIndex:0] objectForKey:XADFileNameKey] string], @"ページ01.jpg");
+}
+
+- (void)testCentralDirectoryUnicodePathExtraWithWrongCRCIsIgnored
+{
+    NSData *regularName=[@"page01.jpg" dataUsingEncoding:NSUTF8StringEncoding];
+    NSData *centralExtra=[self _unicodePathExtraForNameData:regularName
+        unicodeName:@"ページ01.jpg" validCRC:NO];
+    NSData *archiveData=[self _zipWithLocalName:regularName centralName:regularName
+        localExtra:nil centralExtra:centralExtra data:[NSData data]
+        localSignature:0x04034b50 flags:0];
+
+    [self _parserOfClass:[XADZipParser class] archiveData:archiveData lazyLocalHeaders:nil];
+
+    XCTAssertEqual([foundEntries count], (NSUInteger)1);
+    XCTAssertEqualObjects([[[foundEntries objectAtIndex:0] objectForKey:XADFileNameKey] string], @"page01.jpg");
+}
+
+- (void)testLazyModeIgnoresUnicodePathPresentOnlyInLocalExtra
+{
+    NSData *regularName=[@"page01.jpg" dataUsingEncoding:NSUTF8StringEncoding];
+    NSData *localExtra=[self _unicodePathExtraForNameData:regularName
+        unicodeName:@"ページ01.jpg" validCRC:YES];
+    NSData *payload=[@"payload" dataUsingEncoding:NSUTF8StringEncoding];
+    NSData *archiveData=[self _zipWithLocalName:regularName centralName:regularName
+        localExtra:localExtra centralExtra:nil data:payload localSignature:0x04034b50 flags:0];
+
+    XADZipParser *parser=[self _parserOfClass:[XADZipParser class] archiveData:archiveData
+        lazyLocalHeaders:nil];
+    NSDictionary *entry=[foundEntries objectAtIndex:0];
+    XCTAssertEqualObjects([[entry objectForKey:XADFileNameKey] string], @"page01.jpg");
+
+    XADError error=XADNoError;
+    CSHandle *handle=[parser handleForEntryWithDictionary:entry wantChecksum:YES error:&error];
+    XCTAssertEqual(error, XADNoError);
+    XCTAssertEqualObjects([handle remainingFileContents], payload);
+    XCTAssertEqualObjects([[entry objectForKey:XADFileNameKey] string], @"page01.jpg");
+}
+
+- (void)testLazyModeNeverAnalyzesLocalNameDuringExtraction
+{
+    const uint8_t localBytes[]={0x82,0xa0,'.','t','x','t'};
+    NSData *localName=[NSData dataWithBytes:localBytes length:sizeof(localBytes)];
+    NSData *centralName=[@"central.txt" dataUsingEncoding:NSUTF8StringEncoding];
+    NSData *payload=[@"payload" dataUsingEncoding:NSUTF8StringEncoding];
+    NSData *archiveData=[self _zipWithLocalName:localName centralName:centralName
+        localExtra:nil centralExtra:nil data:payload localSignature:0x04034b50 flags:0];
+
+    XADCountingZipParser *parser=(XADCountingZipParser *)[self
+        _parserOfClass:[XADCountingZipParser class] archiveData:archiveData lazyLocalHeaders:nil];
+    XCTAssertEqual([[parser analyzedNames] count], (NSUInteger)1);
+    XCTAssertEqualObjects([[parser analyzedNames] objectAtIndex:0], centralName);
+
+    XADError error=XADNoError;
+    CSHandle *handle=[parser handleForEntryWithDictionary:[foundEntries objectAtIndex:0]
+        wantChecksum:YES error:&error];
+    XCTAssertEqual(error, XADNoError);
+    XCTAssertEqualObjects([handle remainingFileContents], payload);
+    XCTAssertEqual([[parser analyzedNames] count], (NSUInteger)1);
+}
+
+- (void)testLazyLocalHeaderAddsWinZipAESMetadataOnFirstHandleRequest
+{
+    XADMemoryHandle *extraHandle=[CSMemoryHandle memoryHandleForWriting];
+    [extraHandle writeUInt16LE:0x9901];
+    [extraHandle writeUInt16LE:7];
+    [extraHandle writeUInt16LE:2];
+    [extraHandle writeUInt16LE:0x4541];
+    [extraHandle writeUInt8:3];
+    [extraHandle writeUInt16LE:8];
+
+    NSData *name=[@"aes-metadata.txt" dataUsingEncoding:NSUTF8StringEncoding];
+    NSData *payload=[@"payload" dataUsingEncoding:NSUTF8StringEncoding];
+    NSData *archiveData=[self _zipWithLocalName:name centralName:name
+        localExtra:[extraHandle data] centralExtra:nil data:payload
+        localSignature:0x04034b50 flags:0];
+    XADZipParser *parser=[self _parserOfClass:[XADZipParser class] archiveData:archiveData
+        lazyLocalHeaders:nil];
+    NSDictionary *entry=[foundEntries objectAtIndex:0];
+    XCTAssertNil([entry objectForKey:@"WinZipAESVersion"]);
+
+    XADError error=XADNoError;
+    CSHandle *handle=[parser handleForEntryWithDictionary:entry wantChecksum:YES error:&error];
+    XCTAssertEqual(error, XADNoError);
+    XCTAssertEqualObjects([handle remainingFileContents], payload);
+    XCTAssertEqual([[entry objectForKey:@"WinZipAESVersion"] intValue], 2);
+    XCTAssertEqual([[entry objectForKey:@"WinZipAESVendor"] intValue], 0x4541);
+    XCTAssertEqual([[entry objectForKey:@"WinZipAESKeySize"] intValue], 3);
+    XCTAssertEqual([[entry objectForKey:@"WinZipAESCompressionMethod"] intValue], 8);
+}
+
+- (void)testMacSpecialEntriesCanForceLazyHeaderReadDuringListing
+{
+    NSArray *names=[NSArray arrayWithObjects:@"page.bin",@"._page.txt",nil];
+    for(NSString *filename in names)
+    {
+        NSData *name=[filename dataUsingEncoding:NSUTF8StringEncoding];
+        NSData *archiveData=[self _zipWithLocalName:name centralName:name localExtra:nil
+            centralExtra:nil data:[@"payload" dataUsingEncoding:NSUTF8StringEncoding]
+            localSignature:0x04034b50 flags:0];
+        [self _parserOfClass:[XADZipParser class] archiveData:archiveData lazyLocalHeaders:nil];
+
+        XCTAssertEqual([foundEntries count], (NSUInteger)1);
+        NSDictionary *entry=[foundEntries objectAtIndex:0];
+        XCTAssertNotNil([entry objectForKey:XADDataOffsetKey], @"%@ did not force the local header",filename);
+        XCTAssertNotNil([entry objectForKey:@"ZipLocalDate"]);
+    }
+}
+
+- (void)testLazyListingKeepsCentralDirectoryMetadataKeys
+{
+    NSData *name=[@"encrypted.txt" dataUsingEncoding:NSUTF8StringEncoding];
+    NSData *archiveData=[self _zipWithLocalName:name centralName:name localExtra:nil
+        centralExtra:nil data:[NSData data] localSignature:0x04034b50 flags:1];
+
+    [self _parserOfClass:[XADZipParser class] archiveData:archiveData lazyLocalHeaders:nil];
+    NSDictionary *entry=[foundEntries objectAtIndex:0];
+    NSArray *keys=[NSArray arrayWithObjects:@"ZipExtractVersion",@"ZipFlags",
+        @"ZipCompressionMethod",XADLastModificationDateKey,@"ZipCRC32",
+        @"ZipFileAttributes",XADCompressedSizeKey,XADFileSizeKey,XADDataLengthKey,
+        XADIsEncryptedKey,@"ZipOS",@"ZipOSName",XADCompressionNameKey,
+        XADDOSFileAttributesKey,XADPosixPermissionsKey,XADFileNameKey,nil];
+    for(NSString *key in keys) XCTAssertNotNil([entry objectForKey:key], @"Missing list key %@",key);
+    XCTAssertNil([entry objectForKey:XADDataOffsetKey]);
+    XCTAssertNil([entry objectForKey:@"ZipLocalDate"]);
+}
+
 
 #pragma mark - Private
+
+- (XADZipParser *)_parserOfClass:(Class)parserClass archiveData:(NSData *)archiveData
+                lazyLocalHeaders:(NSNumber *)lazy
+{
+    [foundEntries removeAllObjects];
+    XADZipParser *parser=[[[parserClass alloc] init] autorelease];
+    if(lazy) [parser setLazyLocalHeaders:[lazy boolValue]];
+    [parser setHandle:[CSMemoryHandle memoryHandleForReadingData:archiveData]];
+    [parser setDelegate:self];
+    XADError error=[parser parseWithoutExceptions];
+    XCTAssertEqual(error, XADNoError);
+    return parser;
+}
+
+- (NSMutableData *)_zipWithLocalName:(NSData *)localName centralName:(NSData *)centralName
+                          localExtra:(NSData *)localExtra centralExtra:(NSData *)centralExtra
+                                 data:(NSData *)data localSignature:(uint32_t)localSignature
+                                flags:(uint16_t)flags
+{
+    if(!localExtra) localExtra=[NSData data];
+    if(!centralExtra) centralExtra=[NSData data];
+    uint32_t crc=XADCalculateCRC(0xffffffff,[data bytes],(int)[data length],
+        XADCRCTable_edb88320)^0xffffffff;
+    uint32_t date=0x50210000;
+    XADMemoryHandle *handle=[CSMemoryHandle memoryHandleForWriting];
+
+    off_t localOffset=[handle offsetInFile];
+    [handle writeUInt32LE:localSignature];
+    [handle writeUInt16LE:20];
+    [handle writeUInt16LE:flags];
+    [handle writeUInt16LE:0];
+    [handle writeUInt32LE:date];
+    [handle writeUInt32LE:crc];
+    [handle writeUInt32LE:(uint32_t)[data length]];
+    [handle writeUInt32LE:(uint32_t)[data length]];
+    [handle writeUInt16LE:(uint16_t)[localName length]];
+    [handle writeUInt16LE:(uint16_t)[localExtra length]];
+    [handle writeData:localName];
+    [handle writeData:localExtra];
+    [handle writeData:data];
+
+    off_t centralOffset=[handle offsetInFile];
+    [handle writeUInt32LE:0x02014b50];
+    [handle writeUInt8:20];
+    [handle writeUInt8:0];
+    [handle writeUInt16LE:20];
+    [handle writeUInt16LE:flags];
+    [handle writeUInt16LE:0];
+    [handle writeUInt32LE:date];
+    [handle writeUInt32LE:crc];
+    [handle writeUInt32LE:(uint32_t)[data length]];
+    [handle writeUInt32LE:(uint32_t)[data length]];
+    [handle writeUInt16LE:(uint16_t)[centralName length]];
+    [handle writeUInt16LE:(uint16_t)[centralExtra length]];
+    [handle writeUInt16LE:0];
+    [handle writeUInt16LE:0];
+    [handle writeUInt16LE:0];
+    [handle writeUInt32LE:0x20];
+    [handle writeUInt32LE:(uint32_t)localOffset];
+    [handle writeData:centralName];
+    [handle writeData:centralExtra];
+    off_t centralSize=[handle offsetInFile]-centralOffset;
+
+    [handle writeUInt32LE:0x06054b50];
+    [handle writeUInt16LE:0];
+    [handle writeUInt16LE:0];
+    [handle writeUInt16LE:1];
+    [handle writeUInt16LE:1];
+    [handle writeUInt32LE:(uint32_t)centralSize];
+    [handle writeUInt32LE:(uint32_t)centralOffset];
+    [handle writeUInt16LE:0];
+
+    return [NSMutableData dataWithData:[handle data]];
+}
+
+- (NSData *)_unicodePathExtraForNameData:(NSData *)nameData unicodeName:(NSString *)unicodeName
+                                validCRC:(BOOL)validCRC
+{
+    NSData *unicodeData=[unicodeName dataUsingEncoding:NSUTF8StringEncoding];
+    uint32_t crc=XADCalculateCRC(0xffffffff,[nameData bytes],(int)[nameData length],
+        XADCRCTable_edb88320)^0xffffffff;
+    if(!validCRC) crc^=1;
+
+    XADMemoryHandle *handle=[CSMemoryHandle memoryHandleForWriting];
+    [handle writeUInt16LE:0x7075];
+    [handle writeUInt16LE:(uint16_t)(5+[unicodeData length])];
+    [handle writeUInt8:1];
+    [handle writeUInt32LE:crc];
+    [handle writeData:unicodeData];
+    return [NSData dataWithData:[handle data]];
+}
 
 - (XADZipParserCentralDirectoryRecord)_validCentralDirectoryRecord
 {
